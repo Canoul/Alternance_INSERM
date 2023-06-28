@@ -1,0 +1,4413 @@
+---
+title: "Visualisation Compte Rendu"
+author: "Geoffrey BOILAY"
+date: "`r format(Sys.time(),'%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    collapsed: false
+    smooth_scroll: false
+    toc_depth: '4'
+    df_print: paged
+  pdf_document:
+    toc: true
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Contexte
+
+Chaque enregistrement correpond à un patient qui a réalisé une ponction lombère (LCR).
+Une LCR n'étant pas réalisée pour des raisons mineurs, tous les patients de la BDD ont présentés des problèmes cognitifs.
+
+# Objectif
+
+L'objectif de l'étude est d'analyser l’association entre différents biomarqueurs sanguins et les protéines Abeta et tau, marqueurs de la maladie d’Alzheimer. 
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+#Importation
+data = read.csv2("//172.27.137.244/g_boilay/alternance/BASE_EPIDATA.csv")
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+#Library
+
+library(tidyverse)
+library(dplyr)
+library(stringr)
+library(janitor)
+library(corrplot)
+library(BBmisc)
+library(lubridate)
+library(arsenal)
+library(ggfortify)
+library(lmtest)
+library(questionr)
+library(broom)
+library(broom.helpers)
+library(ggeffects)
+library(jtools)
+library("writexl")
+library(gtsummary)
+library(gt)
+```
+
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+## Formatage du type des variables
+
+for (i in 1:length(data)){
+  
+  if(grepl(paste(substr(unlist(tolower(as.character(data[1,i]))),1,1),collapse=" "),str_c(letters,collapse = "")) == T){
+    data[,i] = as.character(data[,i])
+  }else if(grepl(paste(substr(unlist(strsplit(tolower(as.character(data[1,i]))," ")),3,3),collapse=" "),str_c("/",collapse = "")) == T & str_length(as.character(data[1,i])) >= 3){
+    data[,i] = as.Date(data[,i],format = "%d/%m/%Y")
+  }else if(grepl(paste(substr(unlist(strsplit(tolower(as.character(data[1,i]))," ")),1,1),collapse=" "),str_c("0123456789",collapse = "")) == T){
+    data[,i] = as.numeric(as.character(data[,i]))
+  }
+  
+}
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+## Nom des variables en minuscules
+data = clean_names(data)
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Récupération et suppression des enregistrements datant d'avant 2008
+
+#Nous retirons de la base de données les enregistrements qui datent d'avant 2008 car nous n'avons #pas les références de mesures pour les variables d'études pour les enregistrement datant d'avant #cette date.
+
+ldel = c()
+j = 1
+for (i in 1:nrow(data)){
+  if (data$datepl[i] < as.Date("01/01/2008",format = "%d/%m/%Y")){
+    ldel[j] = i
+    j = j + 1
+  }
+
+}
+length(ldel)
+data2 = data[-ldel,]
+
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Ajustement de la variable "pays_naiss"
+
+#Après relecture des modalités de la variable des pays de naissance, on peut remarquer qu'il y a #plusieurs modalités qui représentent le même pays. Les modalités aberrantes ont été relevées #manuellement afin d'être supprimées avec le code ci-dessous 
+
+
+#Liste des modalités de pays à ajuster
+
+data2$pays_naiss = tolower(data2$pays_naiss)
+
+
+#Ajustement des modalités des pays
+
+data2$pays_naiss <- fct_recode(
+    data2$pays_naiss,
+    "algérie" = "algerie",
+    "algérie" = "algã©rie",
+    "algérie" = "alegerie",
+    "cambodge" = "cambodia",
+    "cap-vert" = "cap Vert",
+    "congo" = "congo brazzaville",
+    "congo" = "rd congo",
+    "madagascar" = "madascar",
+    "portugal" = "portugual",
+    "maroc" = "marroc",
+    "royaume-uni" = "royaume uni",   
+    
+)
+
+levels(data2$pays_naiss)
+
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Variables avec un problème de Modalités
+
+### Liste des variables qualitatives avec un problème de caractères dû à l'importation du fichier
+
+#Les variables avec un problème de modalités sont relevées manuellement et listées dans la #variable ci-dessous.
+
+tr = c("trt1","trt2","trt3","trt4","trt5","trt6","trt7","trt8","trt9","trt10",
+"trt11","trt12","trt13","trt14","trt15","trt16","trt17","trt18","trt19","trt20",
+"prec_diagnostic")
+
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+### Récupération des numéros des variables de la liste tr
+ltr = c()
+k = 1
+for (i in 1 : length(data2)){
+	for (j in 1 : length(tr)){
+		if (colnames(data2[i]) == tr[j]){
+			ltr[k] = i
+			k = k + 1
+		}
+	}
+}
+ltr
+```
+
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+### Remplacement des erreurs de caractères
+
+for (i in ltr){
+	for(j in nrow(data2)){
+		data2[j,i] = gsub("Ã©","é", data2[j,i])
+	}
+}
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Modalités de la variable nbre_enfant
+
+#Sur certains enregistrements, nous avons le nombre de garçons et/ou de fille mais pas le nombre #d'enfants.
+#Nous nous basons sur les variables nbre_fille et nbre_garcon pour completer la variable #nbre_enfant lorque cette dernière est vide.
+
+
+#Liste des variables associés aux enfants
+
+enf = c("nbre_enfant","nbre_fille","nbre_garcon")
+
+#Récupération des numéros des variables de la liste "enf"
+
+lenf = c()
+k = 0
+
+for (i in 1 : length(data2)){
+	for (j in 1 : length(enf)){
+		if (colnames(data2[i]) == enf[j]){
+			k = k + 1
+			lenf[k] = i
+
+		}
+	}
+}
+
+
+#Remplissage des modalités vides dans "nbre_enfan"
+
+for (i in 1 : nrow(data2)){
+	if (is.na(data2[i,lenf[1]]) == T & (is.na(data2[i,lenf[2]]) == F | is.na(data2[i,lenf[3]]) == F)){
+		data2[i,lenf[1]] = (if(is.na(data2[i,lenf[2]]) == T){0}else{data2[i,lenf[2]]}) + (if(is.na(data2[i,lenf[3]]) == T){0}else{data2[i,lenf[3]]})
+	}
+}
+
+
+#Cohérence
+
+n = 0
+nv = 0
+
+for (i in 1 : nrow(data2)){
+  if(is.na(data2[i,lenf[1]]) == F){
+    n = n + 1
+    if(data2[i,lenf[1]] == (if(is.na(data2[i,lenf[2]]) == T){0}else{data2[i,lenf[2]]}) + (if(is.na(data2[i,lenf[3]]) == T){0}else{data2[i,lenf[3]]})){
+      nv = nv + 1
+    }
+  }
+}
+nv
+n
+```
+
+# Analyses Univariées
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Fonction "pt.table"
+
+p.table  = function(d){
+  dat_test <- data.frame(x = d)
+  dat_test %>%
+    gather(value = "Modalités") %>%
+    group_by(Modalités) %>%
+    summarise(n = n()) %>%
+    mutate(total_n = sum(n),
+           freq = 100*(n/total_n)) %>%
+    mutate(n_freq = paste0(n, " (", round(freq, 2), "%)")) %>%
+    select(Modalités, n_freq)
+}
+
+## Fonction "p.table"
+
+p.table  = function(d){
+  dat_test <- data.frame(x = d)
+  t = dat_test %>%
+     filter(!is.na(d))%>%
+    gather(value = "Modalités") %>%
+    group_by(Modalités) %>%
+    summarise(n = n(),
+              na = sum(is.na(d))) %>%
+    mutate(total_n = sum(n),
+           freq = 100*(n/total_n)) %>%
+    mutate(n_freq = paste0(n, " (", round(freq, 2), "%)")) %>%
+    select(Modalités, n_freq)
+  
+  na = dat_test %>%
+     filter(is.na(d))%>%
+    gather(value = "Modalités") %>%
+    group_by(Modalités) %>%
+    summarise(n = n(),
+              na = sum(is.na(d))) %>%
+    mutate(total_n = nrow(dat_test),
+           freq = 100*(n/total_n)) %>%
+    mutate(n_freq = paste0(n, " (", round(freq, 2), "%)"),color = "red") %>%
+    select(Modalités, n_freq)
+  
+  tt = dat_test %>%
+    filter(!is.na(d))%>%
+    gather(value = "Modalités") %>%
+    summarise(n = n(),
+              na = sum(is.na(d))) %>%
+    mutate(total_n = nrow(dat_test),
+           freq = 100*(n/total_n)) %>%
+    mutate(Modalités = paste0("Total")) %>%
+    mutate(n_freq = paste0(n, " (", round(freq, 2), "%)"),color = "red") %>%
+    select(Modalités,n_freq)
+  
+  x = rbind(t,tt)
+  rbind(x,na)
+}
+
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+bar = function(d){
+  p = ggplot(data=data2, aes(x=d), fill = d) +
+    geom_bar( ) +
+    scale_fill_grey(start = 0.25, end = 0.75) +
+    theme(legend.position="none")
+  return(p)
+}
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Fonction "outlier_hampel"
+
+outlier_hampel = function(d){
+  k = 3
+  
+  binf <- median(d,na.rm = TRUE) - k * mad(d,na.rm = TRUE) 
+  bsup = median(d,na.rm = TRUE) + k * mad(d,na.rm = TRUE) 
+  
+  outlier <- which(d < binf | d > bsup)
+  
+  for (i in outlier){
+    d[i] = NA
+  }
+  return(d)
+}
+
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Fonction "summ" 
+
+summ = function(d){
+  data2 %>%
+    summarise(n = n()) %>%
+    mutate(total_n = sum(n),
+           na = sum(is.na(d)),
+           freq = 100*(na/total_n)) %>%
+    dplyr:::summarise(
+    min = min(d, na.rm = TRUE),
+    first_quartile = round(quantile(d,0.25, na.rm = TRUE),2),
+    median = round(median(d, na.rm = TRUE),2),
+    mean = round(mean(d, na.rm = TRUE),2),
+    third_quartile = round(quantile(d,0.75, na.rm = TRUE),2),
+    max = max(d, na.rm = TRUE),
+    sd = round(sd(d, na.rm = TRUE),2),
+    na = paste0(na, " (", round(freq, 2), "%)") )
+}
+
+summ(data2$glucose_jeun)
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Fonction "histo" 
+histo = function(d){
+  his = hist(d,
+             main =  paste("Histogramme de la variable"),
+             xlab = d)
+  return(his)
+}
+```
+
+## Dimension de la BDD
+
+```{r , echo = FALSE}
+paste0("Nombre d'observations : ",nrow(data2))
+paste0("Nombre de variables : ",ncol(data2))
+```
+
+
+
+## Variables socio-démographique
+
+### Age {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+age = year(data2$datepl) - year(data2$date_naiss)
+data2 = cbind(data2,age)
+summ(data2$age)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$age)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+histo(age)
+```
+
+
+
+### Sexe {.tabset}
+
+#### Distribution
+
+```{r, echo = FALSE}
+data2$sexe.reg[data2$sexe == 1] = "Homme"
+data2$sexe.reg[data2$sexe == 2] = "Femme"
+
+p.table(data2$sexe.reg)
+```
+
+
+### Niveau d'étude {.tabset}
+
+##### Légende
+
+1     =    non scolarisé  
+2     =    primaire sans diplôme  
+3     =    certificat d'études  
+4     =    secondaire (collège/CAP/brevet)  
+5     =    secondaire (BEP/lycée)  
+6     =    baccalauréat  
+7     =    études supérieures  
+8     =    non renseigné  
+
+#### Modalités normales
+
+```{r, echo = FALSE}
+p.table(data2$niveau_etude)
+```
+
+
+
+
+#### Recodage des Modalités
+
+```{r, echo = FALSE}
+data2$niveau_etude.reg[data2$niveau_etude == 1] = "niveau études mineurs"
+data2$niveau_etude.reg[data2$niveau_etude == 2] = "niveau études mineurs"
+data2$niveau_etude.reg[data2$niveau_etude == 3] = "niveau études mineurs"
+data2$niveau_etude.reg[data2$niveau_etude == 4] = "niveau études intermédiaires"
+data2$niveau_etude.reg[data2$niveau_etude == 5] = "niveau études intermédiaires"
+data2$niveau_etude.reg[data2$niveau_etude == 6] = "niveau études intermédiaires"
+data2$niveau_etude.reg[data2$niveau_etude == 7] = "études supérieurs"
+data2$niveau_etude.reg[data2$niveau_etude == 8] = NA
+
+p.table(data2$niveau_etude.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$niveau_etude.reg)
+```
+
+### Statut Marital {.tabset}
+
+#### Distribution
+
+```{r, echo = FALSE}
+data2$statut_marital.reg[data2$statut_marital == 1] = "Jamais marié"
+data2$statut_marital.reg[data2$statut_marital == 2] = "Marié / en couple"
+data2$statut_marital.reg[data2$statut_marital == 3] = "Veuf"
+data2$statut_marital.reg[data2$statut_marital == 4] = "Divorcé"
+
+p.table(data2$statut_marital.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+data2$statut_marital.reg <- fct_relevel(data2$statut_marital.reg,c("Jamais marié","Corpulence normale","Obésité modérée","Obésité morbide ou massive","Obésité sévère","Surpoids"))
+
+levels(data2$statut_marital.reg)
+bar(data2$statut_marital.reg)
+```
+
+### Nombre d'enfants {.tabset}
+
+
+#### Modalités normales
+```{r, echo = FALSE}
+p.table(data2$nbre_enfant)
+```
+
+#### Recodage des Modalités
+```{r, echo = FALSE}
+data2$nbre_enfant.reg[data2$nbre_enfant == 0] = "0"
+data2$nbre_enfant.reg[data2$nbre_enfant == 1] = "1"
+data2$nbre_enfant.reg[data2$nbre_enfant == 2] = "2"
+data2$nbre_enfant.reg[data2$nbre_enfant == 3] = "3"
+data2$nbre_enfant.reg[data2$nbre_enfant > 3] = "4 ou plus enfants"
+
+p.table(data2$nbre_enfant.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$nbre_enfant.reg)
+```
+
+
+
+
+
+
+### Mode de vie {.tabset}
+
+#### Distribution
+```{r , echo = FALSE}
+data2$mode_vie.reg[data2$mode_vie == 1] = "couple"
+data2$mode_vie.reg[data2$mode_vie == 2] = "seul famille"
+data2$mode_vie.reg[data2$mode_vie == 3] = "seul"
+data2$mode_vie.reg[data2$mode_vie == 4] = "couple famille"
+
+p.table(data2$mode_vie.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$mode_vie.reg)
+```
+
+
+## Comportement de santé
+### Tabac {.tabset}
+
+#### Distribution
+```{r , echo = FALSE}
+data2$tabac.reg[data2$tabac == 1] = "Non"
+data2$tabac.reg[data2$tabac == 2] = "Actif"
+data2$tabac.reg[data2$tabac == 3] = "severe"
+data2$tabac.reg[data2$tabac == 4] = "Occasionnelle"
+
+p.table(data2$tabac.reg)
+```
+
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$tabac)
+```
+
+
+
+
+
+### Alcool {.tabset}
+
+#### Distribution
+
+```{r , echo = FALSE}
+data2$alcool.reg[data2$alcool == 1] = "Jamais"
+data2$alcool.reg[data2$alcool == 2] = "Occasionnelle"
+data2$alcool.reg[data2$alcool == 3] = "Reguliere dans les limites OMS"
+data2$alcool.reg[data2$alcool == 4] = "Reguliere > aux limites OMS"
+
+p.table(data2$alcool.reg)
+```
+
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$alcool.reg)
+```
+
+
+
+
+## Variables de santé
+### IMC {.tabset}
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+imc = data2$poids / (data2$taille/100)^2
+
+data2 = cbind(data2,imc)
+```
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$imc)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$imc)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$imc)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+#Découpage de la variable imc
+
+data2$imc.reg[data2$imc >= 40] = "Obésité morbide ou massive"
+data2$imc.reg[data2$imc <= 40] = "Obésité sévère"
+data2$imc.reg[data2$imc <= 35] = "Obésité modérée"
+data2$imc.reg[data2$imc <= 30] = "Surpoids"
+data2$imc.reg[data2$imc <= 25] = "Corpulence normale"
+data2$imc.reg[data2$imc <= 18.5] = "Insuffisance pondérale"
+
+p.table(data2$imc.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+data2$imc.reg <- fct_relevel(data2$imc.reg,c("Insuffisance pondérale","Corpulence normale","Obésité modérée","Obésité morbide ou massive","Obésité sévère","Surpoids"))
+
+levels(data2$imc.reg)
+
+
+t = bar(data2$imc.reg)
+t + theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
+```
+
+
+### Fréquence Cardiaque {.tabset}
+
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$freq_cardiaque)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$freq_cardiaque)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$freq_cardiaque)
+```
+
+#### Distribution
+```{r , echo = FALSE}
+data2$freq_cardiaque.reg[data2$freq_cardiaque < 60]  = "Freq card basse"
+data2$freq_cardiaque.reg[data2$freq_cardiaque >= 60] = "Freq card normale"
+data2$freq_cardiaque.reg[data2$freq_cardiaque > 80]  = "Freq card haute"
+
+p.table(data2$freq_cardiaque.reg)
+```
+
+
+### Tension Artérielle Systolique {.tabset} 
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$tas)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$tas)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$tas)
+```
+
+
+
+### Tension Artérielle Diastolique {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$tad)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$tad)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$tad)
+```
+
+
+
+
+### Hyper Tension Artérielle {.tabset}
+
+#### Distribution
+```{r , echo = FALSE}
+data2$hta.reg[data2$hta == 2] = 0
+data2$hta.reg[data2$hta == 1] = 1
+
+p.table(data2$hta.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$hta.reg)
+```
+
+
+### Dyslipidemie {.tabset}
+
+#### Distribution
+```{r , echo = FALSE}
+data2$dyslipidemie.reg[data2$dyslipidemie == 2] = 0
+data2$dyslipidemie.reg[data2$dyslipidemie == 1] = 1
+
+p.table(data2$dyslipidemie.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$dyslipidemie.reg)
+``` 
+
+
+
+
+
+### Les traitements {.tabset}
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+#médicament contre le cholestérol
+
+medi_chol = c("atorvastatine","crestor", "pravastatin", "simvastatin","taor","vasten","zocor","lipantil")
+
+#médicament contre la HTA
+
+medi_HTA = c("aldactone","esidrex","fludex","hydrochlorothiazide","spironolactone","aldactazine","spironolactone","amlor","aprovel","amlodipin","lercan","ramipril","coversil","cotareg","triatec","lasilix","atenolol","coaprovel","isoptin","temerit")
+
+#médicament contre le diabete
+
+medi_diabete = c("glucofag","metformin","stagid","diamicron")
+
+#médicament contre la maladie d'Alzheimer
+
+medi_ma = c("donepezil","rivastigmin","risperdal","tanakan","exelon","rivastigminepatc
+")
+
+#médicament contre la maladie de Parkinson
+
+medi_parkinson = c("modopar","tanakan")
+
+#médicament contre les maladies cardiovasculaires
+  
+medi_cv = c("kardegic","plavix")
+
+#médicament contre la dépression
+
+medi_depression = c("seroplex","deroxat","paroxetin","prozac","efexor","lamictal","atimil","mianserin","fluoxetin","escitalopram","laroxil","sertralin","zoloft","seropram")
+
+#médicament contre les carences en vitamines
+
+medi_vitamines = c("uvedos","vitamin")
+
+#médicament contre l'anxiété
+
+medi_anxiete = c("seresta","imovan","lexomil","lisanxia","seroplex")
+
+#médicament anti douleur
+
+medi_antidouleur = c("dolipran","aspegic","paracetamol","aspirin","ixprim","dafalgan","tramadol","cortancyl")
+
+#médicament contre le trouble du comportement
+
+medi_trouble = c("depakot","lamictal")
+
+#médicament contre les troubles de sommeil
+
+medi_sommeil = c("melatonin","mianserin","xanax","atarax","alprazolam","stilnox","temesta","circadin")
+
+
+
+```
+
+### Table médicament restant
+
+```{r}
+data2 = clean_names(data2)
+L = c("trt1","trt2","trt3","trt4","trt5","trt6","trt7","trt8","trt9","trt10",
+"trt11","trt12","trt13","trt14","trt15","trt16","trt17","trt18","trt19","trt20")
+
+trt_total = data.frame(x = data2$trt1)
+
+for (i in 2:length(L)){
+  b = data.frame(x = data2[,L[i]])
+  
+  trt_total = rbind(trt_total,b)
+}
+
+trt_total = trt_total %>%
+      mutate(x = tolower(x))%>% 
+      filter(x != c(""))
+
+### Algo
+
+for (i in 1:nrow(trt_total)){
+	trt_total[i,1] = gsub("y","i", trt_total[i,1])
+	trt_total[i,1] = gsub("ll","l", trt_total[i,1])
+  trt_total[i,1] = gsub("ff","f", trt_total[i,1])
+  trt_total[i,1] = gsub("ph","f", trt_total[i,1])
+  trt_total[i,1] = gsub("h","", trt_total[i,1])
+  trt_total[i,1] = gsub("pp","p", trt_total[i,1])
+  
+  trt_total[i,1] = gsub(",","", trt_total[i,1])
+  trt_total[i,1] = gsub("_","", trt_total[i,1])
+  #trt_total[i,1] = gsub(".","", trt_total[i,1])
+  
+  trt_total[i,1] = gsub("0","", trt_total[i,1])
+  trt_total[i,1] = gsub("1","", trt_total[i,1])
+  trt_total[i,1] = gsub("2","", trt_total[i,1])
+  trt_total[i,1] = gsub("3","", trt_total[i,1])
+  trt_total[i,1] = gsub("4","", trt_total[i,1])
+  trt_total[i,1] = gsub("5","", trt_total[i,1])
+  trt_total[i,1] = gsub("6","", trt_total[i,1])
+  trt_total[i,1] = gsub("7","", trt_total[i,1])
+  trt_total[i,1] = gsub("8","", trt_total[i,1])
+  trt_total[i,1] = gsub("9","", trt_total[i,1])
+
+  if (length(grep(" ", trt_total[i,1], ignore.case = TRUE)) > 0){
+    pos = regexpr(pattern=" ",trt_total[i,1],fixed=TRUE)[1]
+    trt_total[i,1] = substr(trt_total[i,1],1,pos-1)
+}
+  trt_total[i,1] = gsub(" ","", trt_total[i,1])
+  
+  if(substr(trt_total[i,1],nchar(trt_total[i,1]),nchar(trt_total[i,1])) == "e"){
+    trt_total[i,1] = gsub('.{1}$', '', trt_total[i,1])
+  }
+
+}
+
+medi_total = c(medi_chol,medi_diabete,medi_HTA,medi_antidouleur,medi_anxiete,medi_cv,medi_depression,medi_ma,medi_parkinson,medi_sommeil,medi_trouble,medi_vitamines)
+
+trt_total = trt_total %>%
+      mutate(x = tolower(x))%>% 
+      filter(x != c(""),!x %in% medi_total)
+
+
+dat_test <- data.frame(x = trt_total)
+med_nb = dat_test %>%
+            mutate(x = tolower(x)) %>%
+            filter(dat_test != "",!x %in% medi_total)%>%
+            gather(value = "Modalités") %>%
+            group_by(Modalités) %>%
+            summarise(n = n()) %>% arrange(desc(n))    
+
+med_nb = as.data.frame(med_nb)
+
+med_nb
+
+#write_xlsx(med_nb,"//172.27.137.244/g_boilay/alternance/export/med.xlsx")
+#write.csv(med_nb,"//172.27.137.244/g_boilay/alternance/export/med.csv")
+```
+
+
+
+
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+
+ch = NA
+hta_med = NA
+dia = NA
+antidouleur = NA
+anxiete = NA
+cv = NA
+depression = NA
+ma = NA
+parkinson = NA
+sommeil = NA
+trouble = NA
+vitamines = NA
+Lm = list(medi_chol,medi_diabete,medi_HTA,medi_antidouleur,medi_anxiete,medi_cv,medi_depression,medi_ma,medi_parkinson,medi_sommeil,medi_trouble,medi_vitamines)
+
+for (k in 1:length(Lm)){
+  for (i in 1:length(L)){
+    for (j in 1:nrow(data2)){
+      for (l in 1:length(Lm[[k]])){
+        if (grepl(tolower(Lm[[k]][l]),tolower(data2[j,L[i]])) == T & is.na(data[j,L[i]]) == FALSE){
+          if (k == 1){
+            ch[j] = 1
+          }else if (k == 2){
+            dia[j] = 1           
+          }else if (k == 3){
+            hta_med[j] = 1           
+          }else if (k == 4){
+            antidouleur[j] = 1           
+          }else if (k == 5){
+            anxiete[j] = 1           
+          }else if (k == 6){
+            cv[j] = 1           
+          }else if (k == 7){
+            depression[j] = 1           
+          }else if (k == 8){
+            ma[j] = 1           
+          }else if (k == 9){
+            parkinson[j] = 1           
+          }else if (k == 10){
+            sommeil[j] = 1           
+          }else if (k == 11){
+            trouble[j] = 1           
+          }else if (k == 12){
+            vitamines[j] = 1
+          }
+        }
+      }
+    }
+  }
+}
+
+for(i in 1:nrow(data2)){
+  if (is.na(ch[i]) == T){ch[i] = 0}
+  if (is.na(dia[i]) == T){dia[i] = 0}
+  if (is.na(hta_med[i]) == T){hta_med[i] = 0}
+  if (is.na(antidouleur[i]) == T){antidouleur[i] = 0}
+  if (is.na(anxiete[i]) == T){anxiete[i] = 0}
+  if (is.na(cv[i]) == T){cv[i] = 0}
+  if (is.na(depression[i]) == T){depression[i] = 0}
+  if (is.na(ma[i]) == T){ma[i] = 0}
+  if (is.na(parkinson[i]) == T){parkinson[i] = 0}
+  if (is.na(sommeil[i]) == T){sommeil[i] = 0}
+  if (is.na(trouble[i]) == T){trouble[i] = 0}
+  if (is.na(vitamines[i]) == T){vitamines[i] = 0}
+}
+
+
+data2 = cbind(data2,ch,hta_med,dia,antidouleur,anxiete,cv,depression,ma,parkinson,sommeil,trouble,vitamines)
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+dat_test <- data.frame(
+  chol = data2$ch,
+  hta_med = data2$hta_med,
+  dia = data2$dia,
+  antidouleur = data2$antidouleur,
+  anxiete = data2$anxiete,
+  cv = data2$cv,
+  depression = data2$depression,
+  ma = data2$ma,
+  parkinson = data2$parkinson,
+  sommeil = data2$sommeil,
+  trouble = data2$trouble,
+  vitamines = data2$vitamines
+  )
+dat_test %>%
+  gather(key = "Médicaments", value = "Modalités") %>%
+  group_by(Médicaments, Modalités) %>%
+  summarise(n = n()) %>%
+  group_by(Médicaments) %>%
+  mutate(total_n = sum(n),
+         freq = 100*(n/total_n)) %>%
+  mutate(n_freq = paste0(n, " (", round(freq, 2), "%)")) %>%
+  select(Médicaments, Modalités, n_freq)
+```
+## MMSE {.tabset}
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+L = c("date_mms1","date_mms2","date_mms3","date_mms4","date_mms5",
+      "date_mms6","date_mms7","date_mms8","date_mms9","date_mms10",
+      "date_mms11","date_mms12","date_mms13","date_mms14","date_mms15",
+      "date_mms16","date_mms17","date_mms18","date_mms19","date_mms20"
+      )
+
+for (i in 1:nrow(data2)){
+  for (j in 1:length(L)){
+    if(is.na(data2[i,paste0("score_mms",j)]) == TRUE){
+      data2[i,L[j]] = NA
+    }
+  }
+}
+
+mmse = 0
+mmse_last = 0
+mmse_avant_pl = 0
+mmse_apres_pl = 0
+
+for (i in 1:nrow(data2)){
+  li = c()
+    for (j in 1:length(L)){
+      li[j] = difftime(data2[i,L[j]],data2$datepl[i],units = "days")
+      
+    }
+  if (sum(is.na(li)) < 20){
+    mmse[i] = data2[i,paste0("score_mms",which.min(abs(li)))]
+  
+  cond <- sapply(li, function(x) is.na(x) == F)
+  li = li[cond]
+  
+  mx = which.max(li)
+  mmse_last[i] = li[mx]
+  
+  
+  inf <- sapply(li, function(x) x < 0)
+  mmse_avant_pl[i] = length(li[inf])
+  
+  
+  sup <- sapply(li, function(x) x > 0)
+  mmse_apres_pl[i] = length(li[sup])
+  }
+}
+
+data2 = cbind(data2,mmse)
+rm(mmse)
+```
+
+
+### Summary
+```{r , echo = FALSE}
+summ(data2$mmse)
+```
+
+### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$mmse)
+```
+
+### Histogramme
+```{r , echo = FALSE}
+hist(data2$mmse)
+```
+
+### Découpage
+```{r , echo = FALSE}
+data2$mmse.reg[data2$mmse >= 27] = "Nul"
+data2$mmse.reg[data2$mmse <= 26] = "Léger"
+data2$mmse.reg[data2$mmse <= 20] = "Modéré"
+data2$mmse.reg[data2$mmse <= 10] = "Sévère"
+
+p.table(data2$mmse.reg)
+```
+### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$mmse.reg)
+```
+
+
+
+
+
+
+## APOE {.tabset}
+
+### Distribution
+```{r,echo = FALSE}
+data2$apoe.reg[data2$apoe == 1] = "E3/E3"
+data2$apoe.reg[data2$apoe == 2] = "Présence E4"
+data2$apoe.reg[data2$apoe == 3] = "E4/E4"
+data2$apoe.reg[data2$apoe == 4] = "Présence E2"
+data2$apoe.reg[data2$apoe == 5] = "Présence E4"
+data2$apoe.reg[data2$apoe == 6] = "Présence E2"
+
+p.table(data2$apoe.reg)
+```
+### Distribution présence E4
+```{r,echo = FALSE}
+data2$apoe.reg2[data2$apoe == 1] = 0
+data2$apoe.reg2[data2$apoe == 2] = 1
+data2$apoe.reg2[data2$apoe == 3] = 2
+data2$apoe.reg2[data2$apoe == 4] = 0
+data2$apoe.reg2[data2$apoe == 5] = 1
+data2$apoe.reg2[data2$apoe == 6] = 0
+
+p.table(data2$apoe.reg2)
+```
+
+### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$apoe.reg)
+```
+
+
+
+
+
+## Diagnostique clinique {.tabset}
+
+#### Légende
+
+1 = MA  
+2 = MCI amnésique  
+3 = MCI autre  
+4= Démence mixte  
+5 = Démence vasculaire  
+6 = DFT  
+7 = Lewy  
+8 = Atrophie corticale postérieure  
+9 = Démence alcoolique  
+10 = Aphasie progressive primaire  
+11 = Trouble psychiatrique   
+12 = VIH   
+13 = NSP  
+14 = Autre  
+
+
+
+### Distribution
+```{r, echo = FALSE}
+p.table(data2$diagnostic_cli)
+```
+### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$diagnostic_cli)
+```
+
+
+
+
+
+## Biomarqueur de la MA
+### Abeta42 {.tabset}
+
+#### Distribution
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+attach(data2)
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+abeta42t = c()
+
+
+for (i in 1:nrow(data2)){
+  
+   if (between(datepl[i],as.Date("01/01/2008", format = "%d/%m/%Y") ,as.Date("05/12/2012",format = "%d/%m/%Y",)) & abeta42[i] > 500 & is.na(abeta42[i]) == FALSE){
+    abeta42t[i] = "abeta42 normal"
+
+    
+  }else if (between(datepl[i],as.Date("05/12/2012", format = "%d/%m/%Y"),as.Date("20/05/2016",format = "%d/%m/%Y",)) & abeta42[i] > 815 & is.na(abeta42[i]) == FALSE){
+    abeta42t[i] = "abeta42 normal"
+
+    
+  }else if (between(datepl[i],as.Date("20/05/2016", format = "%d/%m/%Y"),as.Date("24/05/2018",format = "%d/%m/%Y",)) & abeta42[i] > 730 & is.na(abeta42[i]) == FALSE){
+    abeta42t[i] = "abeta42 normal"
+  
+    
+  }else if (datepl[i] >= as.Date("24/05/2018",format = "%d/%m/%Y") & abeta42[i] > 860 & is.na(abeta42[i]) == FALSE){
+      abeta42t[i] = "abeta42 normal"
+
+      
+  }else{
+    abeta42t[i] = "abeta42 faible"
+ 
+    
+  }
+}
+
+data2 = cbind(data2,abeta42t)
+```
+
+
+```{r,echo = FALSE}
+p.table(data2$abeta42t)
+```
+
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$abeta42t)
+```
+
+#### Standardisation
+
+```{r,echo = FALSE}
+
+
+abeta42_1 = c()
+abeta42_2 = c()
+abeta42_3 = c()
+abeta42_4 = c()
+abeta42_5 = c()
+
+a = 1
+b = 1
+c = 1
+d = 1
+e = 1
+
+for (i in 1:nrow(data2)){
+  
+   if (between(datepl[i],as.Date("01/01/2008", format = "%d/%m/%Y") ,as.Date("05/12/2012",format = "%d/%m/%Y",)) & is.na(abeta42[i]) == FALSE){
+    abeta42_1[a] = abeta42[i]
+    a = a + 1
+    
+  }else if (between(datepl[i],as.Date("05/12/2012", format = "%d/%m/%Y"),as.Date("20/05/2016",format = "%d/%m/%Y",)) & is.na(abeta42[i]) == FALSE){
+    abeta42_2[b] = abeta42[i]
+    b = b + 1
+    
+  }else if (between(datepl[i],as.Date("20/05/2016", format = "%d/%m/%Y"),as.Date("24/05/2018",format = "%d/%m/%Y",)) & is.na(abeta42[i]) == FALSE){
+    abeta42_3[c] = abeta42[i]
+    c = c + 1   
+    
+  }else if (datepl[i] >= as.Date("24/05/2018",format = "%d/%m/%Y") & is.na(abeta42[i]) == FALSE){
+    abeta42_4[d] = abeta42[i]
+    d = d + 1  
+  }else if (is.na(abeta42[i]) == TRUE){
+    abeta42_5[e] = NA
+    e = e + 1  
+  }
+}
+
+
+
+
+
+
+abeta42_1 = scale(abeta42_1)
+abeta42_2 = scale(abeta42_2)
+abeta42_3 = scale(abeta42_3)
+abeta42_4 = scale(abeta42_4)
+
+abeta42_5b = matrix(nrow = length(abeta42_5),ncol = 1)
+
+
+
+abeta42_ = rbind(abeta42_1,abeta42_2,abeta42_3,abeta42_4,abeta42_5b)
+
+data2 = cbind(data2,abeta42_)
+
+summ(data2$abeta42_)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$abeta42_)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$abeta42_)
+```
+
+### Tau {.tabset}
+
+#### Distribution
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+taut = c()
+
+tau_1 = c()
+tau_2 = c()
+tau_3 = c()
+tau_4 = c()
+tau_5 = c()
+
+a = 1
+b = 1
+c = 1
+d = 1
+e = 1
+
+
+for (i in 1:nrow(data2)){
+  
+  
+   if (between(datepl[i],as.Date("01/01/2008", format = "%d/%m/%Y"),as.Date("05/12/2012",format = "%d/%m/%Y",)) & tau[i] > 300 & is.na(tau[i]) == FALSE){
+    taut[i] = "tau elevé"
+    tau_1[a] = tau[i]
+    a = a + 1
+     
+  }else if (between(datepl[i],as.Date("05/12/2012", format = "%d/%m/%Y"),as.Date("20/05/2016",format = "%d/%m/%Y",)) & tau[i] > 300 & is.na(tau[i]) == FALSE){
+    taut[i] = "tau elevé"
+    tau_2[b] = tau[i]
+    b = b + 1
+      
+  }else if (between(datepl[i],as.Date("20/05/2016", format = "%d/%m/%Y"),as.Date("24/05/2018",format = "%d/%m/%Y",)) & tau[i] > 340 & is.na(tau[i]) == FALSE){
+    taut[i] = "tau elevé"
+    tau_3[c] = tau[i]
+    c = c + 1
+    
+  }else if (datepl[i] >= as.Date("24/05/2018",format = "%d/%m/%Y") & tau[i] > 225 & is.na(tau[i]) == FALSE){
+      taut[i] = "tau elevé"
+    tau_4[d] = tau[i]
+    d = d + 1
+      
+  }else{
+    taut[i] = "tau normal"
+        tau_5[e] = tau[i]
+    e = e + 1
+  }
+}
+
+data2 = cbind(data2,taut)
+```
+
+```{r,echo = FALSE}
+p.table(data2$taut)
+```
+
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$taut)
+```
+
+#### Standardisation
+
+```{r,echo = FALSE}
+
+
+
+tau_1 = c()
+tau_2 = c()
+tau_3 = c()
+tau_4 = c()
+tau_5 = c()
+
+a = 1
+b = 1
+c = 1
+d = 1
+e = 1
+
+for (i in 1:nrow(data2)){
+  
+   if (between(datepl[i],as.Date("01/01/2008", format = "%d/%m/%Y") ,as.Date("05/12/2012",format = "%d/%m/%Y",)) & is.na(tau[i]) == FALSE){
+    tau_1[a] = tau[i]
+    a = a + 1
+    
+  }else if (between(datepl[i],as.Date("05/12/2012", format = "%d/%m/%Y"),as.Date("20/05/2016",format = "%d/%m/%Y",)) & is.na(tau[i]) == FALSE){
+    tau_2[b] = tau[i]
+    b = b + 1
+    
+  }else if (between(datepl[i],as.Date("20/05/2016", format = "%d/%m/%Y"),as.Date("24/05/2018",format = "%d/%m/%Y",)) & is.na(tau[i]) == FALSE){
+    tau_3[c] = tau[i]
+    c = c + 1   
+    
+  }else if (datepl[i] >= as.Date("24/05/2018",format = "%d/%m/%Y") & is.na(tau[i]) == FALSE){
+    tau_4[d] = tau[i]
+    d = d + 1  
+  }else if (is.na(tau[i]) == TRUE){
+    tau_5[e] = i
+    e = e + 1  
+  }
+}
+
+
+
+
+
+
+tau_1 = scale(tau_1)
+tau_2 = scale(tau_2)
+tau_3 = scale(tau_3)
+tau_4 = scale(tau_4)
+tau_5b = matrix(nrow = length(tau_5),ncol = 1)
+
+tau_ = rbind(tau_1,tau_2,tau_3,tau_4,tau_5b)
+
+
+data2 = cbind(data2,tau_)
+
+summ(data2$tau_)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$abeta42_)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$abeta42_)
+```
+
+## Biomarqueur sanguin
+### Cholesterol Total (g/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$cholesterol_total)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$cholesterol_total)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$cholesterol_total)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$cholesterol_total.reg[data2$cholesterol_total <= 2] = "Cholestérol total normal"
+data2$cholesterol_total.reg[data2$cholesterol_total > 2] = "Cholestérol total élevé"
+
+p.table(data2$cholesterol_total.reg)
+```
+
+
+
+
+
+### Cholesterol hdl (g/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$cholesterol_hdl)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$cholesterol_hdl)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$cholesterol_hdl)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$cholesterol_hdl.reg[data2$cholesterol_hdl < 0.4] = "cholesterol_hdl faible"
+data2$cholesterol_hdl.reg[data2$cholesterol_hdl >= 0.4] = "cholesterol_hdl normal"
+data2$cholesterol_hdl.reg[data2$cholesterol_hdl > 0.6] = "cholesterol_hdl élevé"
+
+p.table(data2$cholesterol_hdl.reg)
+```
+
+### Cholesterol ldl (g/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$cholesterol_ldl)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$cholesterol_ldl)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$cholesterol_ldl)
+```
+
+
+### Glucose à jeun (mmol/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$glucose_jeun)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$glucose_jeun)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$glucose_jeun)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$glucose_jeun.reg[data2$glucose_jeun <= 3.9] = "Hypoglycémie"
+data2$glucose_jeun.reg[data2$glucose_jeun > 3.9] = "glycémie normale"
+data2$glucose_jeun.reg[data2$glucose_jeun > 6.1] = "Hyperglycémie"
+
+p.table(data2$glucose_jeun.reg)
+```
+
+
+### Triglycerides (g/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+data2$triglycerides = outlier_hampel(data2$triglycerides)
+summ(data2$triglycerides)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$triglycerides)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$triglycerides)
+```
+
+## Autres biomarqueurs
+### Folates (nmol/l) {.tabset}
+
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$folates)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$folates)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$folates)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$folates.reg[data2$folates >= 7] = "Taux de folates normal"
+data2$folates.reg[data2$folates < 7] = "Carence en folates"
+
+p.table(data2$folates.reg)
+```
+
+
+
+
+
+
+
+
+
+### Vitamine B12 (pmol/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$vitamine_b12)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$vitamine_b12)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$vitamine_b12)
+```
+
+
+
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$vitamine_b12)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$vitamine_b12.reg[data2$vitamine_b12 >= 147.6] = "Taux de Vitamine B12 normal"
+data2$vitamine_b12.reg[data2$vitamine_b12 < 147.6] = "Carence en Vitamine B12"
+
+p.table(data2$vitamine_b12.reg)
+```
+
+### Vitamine D (nmol/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$vitamine_d)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$vitamine_d)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$vitamine_d)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$vitamine_d.reg[data2$vitamine_d >= 50] = "Taux de vitamine D normal"
+data2$vitamine_d.reg[data2$vitamine_d < 50] = "Carence en vitamine D"
+
+p.table(data2$vitamine_d.reg)
+```
+
+### Proteines (g/l) {.tabset}
+
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$proteines)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$proteines)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$proteines)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$proteines.reg[data2$proteines < 60] = "hypoprotéinémie"
+data2$proteines.reg[data2$proteines >= 60] = "protéines normal"
+data2$proteines.reg[data2$proteines > 80] = "hyperprotéinémie"
+
+p.table(data2$proteines.reg)
+```
+
+
+### TSH (mu/l) {.tabset}
+
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$tsh)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$tsh)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$tsh)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$tsh.reg[data2$tsh < 0.5] = "hyperthyroïdie"
+data2$tsh.reg[data2$tsh >= 0.5] = "TSH normal"
+data2$tsh.reg[data2$tsh > 5] = "hyperthyroïdie"
+
+p.table(data2$tsh.reg)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Uree (mmol/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$uree)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$uree)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$uree)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$uree.reg[data2$uree < 3] = "urée faible"
+data2$uree.reg[data2$uree >= 3] = "urée normal"
+data2$uree.reg[data2$uree > 7.5] = "urémie chronique ou aiguë"
+
+p.table(data2$uree.reg)
+```
+
+
+
+
+
+
+### Creatinine (umol/l) {.tabset}
+
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$creatinine)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$creatinine)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$creatinine)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$creatinine.reg[data2$creatinine < 53] = "créatinine faible"
+data2$creatinine.reg[data2$creatinine >= 53] = "créatinine normal"
+data2$creatinine.reg[data2$creatinine > 97] = "créatinine élevé"
+
+p.table(data2$creatinine.reg)
+```
+
+
+
+
+
+### Calcium (mmol/l) {.tabset}
+
+#### Summary
+
+```{r , echo = FALSE}
+data2$calcium = outlier_hampel(data2$calcium)
+summ(data2$calcium)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$calcium)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$calcium)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$calcium.reg[data2$calcium <= 2.2] = "calcium faible"
+data2$calcium.reg[data2$calcium > 2.2] = "calcium normal"
+data2$calcium.reg[data2$calcium > 2.6] = "calcium élevé"
+
+p.table(data2$calcium.reg)
+```
+
+```{r, echo=FALSE}
+k = 3
+
+binf <- median(data2$calcium,na.rm = TRUE) - k * mad(data2$calcium,na.rm = TRUE) 
+bsup = median(data2$calcium,na.rm = TRUE) + k * mad(data2$calcium,na.rm = TRUE) 
+
+outlier_calcium <- which(data2$calcium < binf | data2$calcium > bsup)
+outlier_calcium
+
+test = data2$calcium
+for (i in outlier_calcium){
+  test[i] = NA
+}
+summ(test)
+```
+
+
+
+
+
+
+
+<br>
+
+
+# Études d'association
+
+Les variables que nous cherchons à expliquer sont l'abeta42 et le tau.  
+
+## Mise en forme d'abeta42 en modalité
+
+```{r,echo = FALSE}
+data2$abeta42t2 <- FALSE
+data2$abeta42t2[data2$abeta42t == "abeta42 faible"] <- TRUE
+
+p.table(data2$abeta42t2)
+```
+
+## Mise en forme de tau en modalité
+
+```{r,echo = FALSE}
+data2$taut2 <- FALSE
+data2$taut2[data2$taut == "tau elevé"] <- TRUE
+
+p.table(data2$taut2)
+```
+
+
+## Matrice de corrélation
+
+```{r, echo=FALSE}
+data_cor = data2 %>% select(abeta42_,glucose_jeun,triglycerides,cholesterol_total,age,sexe,apoe.reg2,ch,dia,mmse,abeta42t2,tau_,taut2)
+
+data_corr = cor(data_cor,use = "na.or.complete")
+
+corrplot(data_corr, type="upper", order="hclust", tl.col="black", tl.srt=45,)
+```
+
+## Abeta42 en catégorie
+
+### Nombre d'observations dans les modèles
+
+```{r, echo=FALSE}
+
+print("Modèle")
+
+print(" + abeta42t2")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F)))
+
+print(" + glucose_jeun")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F)))
+
+print(" + triglycerides")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F)))
+
+print(" + cholesterol_total")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F)))
+
+print(" + age")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F)))
+
+print(" + sexe")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F)))
+
+print(" + apoe.reg2")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F)))
+
+print(" + ch")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F)))
+
+print(" + mmse")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F)))
+
+
+
+print(" + dia")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(dia) == F)))
+
+print(" + imc")
+paste0("N = ",nrow(filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)))
+
+data_am = filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,     
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+
+data_am_g = filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+data_am_t = filter(data2, is.na(abeta42t2) == F,
+               is.na(triglycerides) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+data_am_c = filter(data2, is.na(abeta42t2) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+```
+
+### Tableau de fréquence
+```{r results='asis',echo = FALSE}
+data_am$sexe = as.factor(data_am$sexe)
+data_am$ch = as.factor(data_am$ch)
+data_am$dia = as.factor(data_am$dia)
+data_am$apoe.reg2 = as.factor(data_am$apoe.reg2)
+
+labels(data_am)  <- c(age = 'Age', sexe_reg = "Sexe", glucose_jeun = "Glucose",apoe.reg2 = "Présence E4", mmse = "MMSE", ch = "Traitement cholesterol", dia = "Traitement Diabete",triglycerides = "Triglycerides",cholesterol_total = "Cholesterol",cholesterol_hdl = "Cholesterol hdl",cholesterol_ldl = "Cholesterol ldl",niveau_etude_reg = "Niveau d'étude")
+
+tab1 <- tableby(abeta42t~  age + sexe_reg  + glucose_jeun + triglycerides + cholesterol_total + cholesterol_hdl + cholesterol_ldl + apoe.reg2 + mmse + ch + dia + niveau_etude_reg, data=data_am)
+summary(tab1, text=TRUE)
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+# Standardisation des variables
+
+data_am$glucose_jeun = scale(data_am$glucose_jeun)
+data_am$triglycerides = scale(data_am$triglycerides)
+data_am$cholesterol_total = scale(data_am$cholesterol_total)
+data_am$age = data_am$age/10
+
+```
+
+### Modèles sur le Glucose {.tabset}
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_am_g))
+```
+
+Modèle 1 : Glucose + age  
+Modèle 2 : Glucose + age + sexe  
+Modèle 3 : Glucose + age + sexe + APOE  
+Modèle 4 : Glucose + age + sexe + APOE + Traitements  
+Modèle 5 : Glucose + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Glucose + age + sexe + APOE + Traitements + MMSE + IMC  
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose_reg <- glm(abeta42t2 ~ glucose_jeun + age, data = data_am_g, family = binomial(logit))
+reg = abeta42_glucose_reg
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose_reg2 <- glm(abeta42t2 ~ glucose_jeun + age + sexe , data = data_am_g, family = binomial(logit))
+reg = abeta42_glucose_reg2
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose_reg3 <- glm(abeta42t2 ~ glucose_jeun + age + sexe + apoe.reg2 , data = data_am_g, family = binomial(logit))
+reg = abeta42_glucose_reg3
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose_reg4 <- glm(abeta42t2 ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia , data = data_am_g, family = binomial(logit))
+reg = abeta42_glucose_reg4
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 5 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose_reg5 <- glm(abeta42t2 ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia + mmse , data = data_am_g, family = binomial(logit))
+reg = abeta42_glucose_reg5
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 6 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose_reg6 <- glm(abeta42t2 ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_am_g, family = binomial(logit))
+reg = abeta42_glucose_reg6
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+t1 = tbl_regression(abeta42_glucose_reg, exponentiate = TRUE)
+t2 = tbl_regression(abeta42_glucose_reg2, exponentiate = TRUE)
+t3 = tbl_regression(abeta42_glucose_reg3, exponentiate = TRUE)
+t4 = tbl_regression(abeta42_glucose_reg4, exponentiate = TRUE)
+t5 = tbl_regression(abeta42_glucose_reg5, exponentiate = TRUE)
+t6 = tbl_regression(abeta42_glucose_reg6, exponentiate = TRUE)
+
+
+
+abeta42_glucose_tab <-
+  tbl_merge(
+    tbls = list(t1, t2,t3,t4,t5,t6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+abeta42_glucose_tab
+```
+
+### Modèles sur la Triglycéride {.tabset}
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_am_t))
+```
+
+Modèle 1 : Triglycéride + age  
+Modèle 2 : Triglycéride + age + sexe  
+Modèle 3 : Triglycéride + age + sexe + APOE  
+Modèle 4 : Triglycéride + age + sexe + APOE + Traitements  
+Modèle 5 : Triglycéride + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Triglycéride + age + sexe + APOE + Traitements + MMSE + IMC  
+
+
+
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycerides_reg <- glm(abeta42t2 ~ triglycerides + age, data = data_am_t, family = binomial(logit))
+reg = abeta42_triglycerides_reg
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycerides_reg2 <- glm(abeta42t2 ~ triglycerides + age + sexe , data = data_am_t, family = binomial(logit))
+reg = abeta42_triglycerides_reg2
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycerides_reg3 <- glm(abeta42t2 ~ triglycerides+ age + sexe + apoe.reg2 , data = data_am_t, family = binomial(logit))
+reg = abeta42_triglycerides_reg3
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycerides_reg4 <- glm(abeta42t2 ~ triglycerides+ age + sexe + apoe.reg2 + ch + dia , data = data_am_t, family = binomial(logit))
+reg = abeta42_triglycerides_reg4
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 5 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycerides_reg5 <- glm(abeta42t2 ~ triglycerides+ age + sexe + apoe.reg2 + ch + dia + mmse , data = data_am_t, family = binomial(logit))
+reg = abeta42_triglycerides_reg5
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+#### Modèle 6 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycerides_reg6 <- glm(abeta42t2 ~ triglycerides+ age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_am_t, family = binomial(logit))
+reg = abeta42_triglycerides_reg6
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+t1 = tbl_regression(abeta42_triglycerides_reg, exponentiate = TRUE)
+t2 = tbl_regression(abeta42_triglycerides_reg2, exponentiate = TRUE)
+t3 = tbl_regression(abeta42_triglycerides_reg3, exponentiate = TRUE)
+t4 = tbl_regression(abeta42_triglycerides_reg4, exponentiate = TRUE)
+t5 = tbl_regression(abeta42_triglycerides_reg5, exponentiate = TRUE)
+t6 = tbl_regression(abeta42_triglycerides_reg6, exponentiate = TRUE)
+
+
+
+abeta42_triglycerides_tab <-
+  tbl_merge(
+    tbls = list(t1, t2,t3,t4,t5,t6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+abeta42_triglycerides_tab
+```
+
+### Modèles sur le Cholestérol {.tabset}
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_am_c))
+```
+
+Modèle 1 : Cholestérol + age  
+Modèle 2 : Cholestérol + age + sexe  
+Modèle 3 : Cholestérol + age + sexe + APOE  
+Modèle 4 : Cholestérol + age + sexe + APOE + Traitements  
+Modèle 5 : Cholestérol + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Cholestérol + age + sexe + APOE + Traitements + MMSE + IMC  
+
+
+
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol_reg <- glm(abeta42t2 ~ cholesterol_total + age, data = data_am_c, family = binomial(logit))
+reg = abeta42_cholesterol_reg
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol_reg2 <- glm(abeta42t2 ~ cholesterol_total+ age + sexe , data = data_am_c, family = binomial(logit))
+reg = abeta42_cholesterol_reg2
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol_reg3 <- glm(abeta42t2 ~ cholesterol_total+ age + sexe + apoe.reg2 , data = data_am_c, family = binomial(logit))
+reg = abeta42_cholesterol_reg3
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol_reg4 <- glm(abeta42t2 ~ cholesterol_total+ age + sexe + apoe.reg2 + ch + dia , data = data_am_c, family = binomial(logit))
+reg = abeta42_cholesterol_reg4
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+#### Modèle 5 {.tabset}
+
+
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol_reg5 <- glm(abeta42t2 ~ cholesterol_total + age + sexe + apoe.reg2 + ch + dia + mmse , data = data_am_c, family = binomial(logit))
+reg = abeta42_cholesterol_reg5
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+#### Modèle 6 {.tabset}
+
+
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol_reg6 <- glm(abeta42t2 ~ cholesterol_total + age + sexe + apoe.reg2 + ch + dia + mmse + imc, data = data_am_c, family = binomial(logit))
+reg = abeta42_cholesterol_reg6
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+t1 = tbl_regression(abeta42_triglycerides_reg, exponentiate = TRUE)
+t2 = tbl_regression(abeta42_triglycerides_reg2, exponentiate = TRUE)
+t3 = tbl_regression(abeta42_triglycerides_reg3, exponentiate = TRUE)
+t4 = tbl_regression(abeta42_triglycerides_reg4, exponentiate = TRUE)
+t5 = tbl_regression(abeta42_triglycerides_reg5, exponentiate = TRUE)
+t6 = tbl_regression(abeta42_triglycerides_reg6, exponentiate = TRUE)
+
+
+
+abeta42_triglycerides_tab <-
+  tbl_merge(
+    tbls = list(t1, t2,t3,t4,t5,t6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+abeta42_triglycerides_tab
+```
+
+
+## Abeta42 en continu
+
+### Nombre d'Observations dans les modèles
+
+```{r, echo=FALSE}
+
+
+print("Modèle")
+
+print(" + abeta42_")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F)))
+
+print(" + glucose_jeun")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F)))
+
+print(" + triglycerides")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F)))
+
+print(" + cholesterol_total")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F)))
+
+print(" + age")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F)))
+
+print(" + sexe")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F)))
+
+print(" + apoe.reg2")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F)))
+
+print(" + ch")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F)))
+
+print(" + mmse")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F)))
+
+print(" + imc")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F)))
+
+
+
+print(" + dia")
+paste0("N = ",nrow(filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)))
+
+data_ac = filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F) 
+
+
+
+data_ac_g = filter(data2, is.na(abeta42_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+data_ac_t = filter(data2, is.na(abeta42_) == F,
+               is.na(triglycerides) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+data_ac_c = filter(data2, is.na(abeta42_) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+# Standardisation des variables
+
+
+data_ac$glucose_jeun = scale(data_ac$glucose_jeun)
+data_ac$triglycerides = scale(data_ac$triglycerides)
+data_ac$cholesterol_total = scale(data_ac$cholesterol_total)
+data_ac$age = data_ac$age/10
+
+```
+
+
+
+### Matrice de corrélation
+
+```{r, echo=FALSE}
+data_ac2 = data_ac %>% select(abeta42_,glucose_jeun,triglycerides,cholesterol_total,age,sexe,apoe.reg2,ch,dia,mmse)
+
+data_ac_cor = cor(data_ac2)
+
+corrplot(data_ac_cor, type="upper", order="hclust", tl.col="black", tl.srt=45)
+```
+
+
+
+### Modèles sur le Glucose {.tabset}
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_ac_g))
+```
+
+Modèle 1 : Glucose + age  
+Modèle 2 : Glucose + age + sexe  
+Modèle 3 : Glucose + age + sexe + APOE  
+Modèle 4 : Glucose + age + sexe + APOE + Traitements  
+Modèle 5 : Glucose + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Glucose + age + sexe + APOE + Traitements + MMSE + IMC  
+
+
+
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose.mod = lm(abeta42_ ~ glucose_jeun + age, data = data_ac_g)
+mod = abeta42_glucose.mod
+var = data_ac_g$glucose_jeun
+summary(abeta42_glucose.mod)
+```
+
+
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(abeta42_glucose.mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_g$abeta42_ ~ data_ac_g$glucose_jeun, ylab = "Abeta42 std", xlab = "Glucose")
+abline(abeta42_glucose.mod, col = "red")
+
+```
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose2.mod = lm(abeta42_ ~ glucose_jeun + age + sexe , data = data_ac_g)
+mod = abeta42_glucose2.mod
+var = data_ac_g$glucose_jeun
+summary(mod)
+```
+```{r}
+confint(mod, 'sexe', level=0.95)
+
+summary(mod)$coefficients
+```
+
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_g$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose3.mod = lm(abeta42_ ~ glucose_jeun + age + sexe + apoe.reg2 , data = data_ac_g)
+mod = abeta42_glucose3.mod
+var = data_ac_g$glucose_jeun
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_g$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose4.mod = lm(abeta42_ ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia , data = data_ac_g)
+mod = abeta42_glucose4.mod
+var = data_ac_g$glucose_jeun
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_g$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+#### Modèle 5 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose5.mod = lm(abeta42_ ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia + mmse , data = data_ac_g)
+mod = abeta42_glucose5.mod
+var = data_ac_g$glucose_jeun
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_g$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+#### Modèle 6 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_glucose6.mod = lm(abeta42_ ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_ac_g)
+mod = abeta42_glucose6.mod
+var = data_ac_g$glucose_jeun
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_g$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+export_summs(abeta42_glucose.mod, abeta42_glucose2.mod, abeta42_glucose3.mod, abeta42_glucose4.mod, abeta42_glucose5.mod,abeta42_glucose6.mod,
+             scale = TRUE,
+             ci_level = 0.95,
+             error_format = "[{conf.low}, {conf.high}],({p.value})")
+```
+
+
+
+
+### Modèles sur la Triglycéride {.tabset} 
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_ac_t))
+```
+
+
+Modèle 1 : Triglycéride + age  
+Modèle 2 : Triglycéride + age + sexe  
+Modèle 3 : Triglycéride + age + sexe + APOE  
+Modèle 4 : Triglycéride + age + sexe + APOE + Traitements  
+Modèle 5 : Triglycéride + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Triglycéride + age + sexe + APOE + Traitements + MMSE + IMC  
+
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycérides.mod = lm(abeta42_ ~ triglycerides + age, data = data_ac_t)
+mod = abeta42_triglycérides.mod
+var = data_ac_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_t$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycérides2.mod = lm(abeta42_ ~ triglycerides + age + sexe , data = data_ac_t)
+mod = abeta42_triglycérides2.mod
+var = data_ac_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_t$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycérides3.mod = lm(abeta42_ ~ triglycerides + age + sexe + apoe.reg2 , data = data_ac_t)
+mod = abeta42_triglycérides3.mod
+var = data_ac_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_t$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycérides4.mod = lm(abeta42_ ~ triglycerides + age + sexe + apoe.reg2 + ch + dia , data = data_ac_t)
+mod = abeta42_triglycérides4.mod
+var = data_ac_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_t$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+
+#### Modèle 5 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycérides5.mod = lm(abeta42_ ~ triglycerides+ age + sexe + apoe.reg2 + ch + dia + mmse , data = data_ac_t)
+mod = abeta42_triglycérides5.mod
+var = data_ac_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_t$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+#### Modèle 6 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_triglycérides6.mod = lm(abeta42_ ~ triglycerides+ age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_ac_t)
+mod = abeta42_triglycérides6.mod
+var = data_ac_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_t$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+export_summs(abeta42_triglycérides.mod, abeta42_triglycérides2.mod, abeta42_triglycérides3.mod, abeta42_triglycérides4.mod, abeta42_triglycérides5.mod,abeta42_triglycérides6.mod,
+             scale = TRUE,
+             ci_level = 0.95,
+             error_format = "[{conf.low}, {conf.high}],({p.value})")
+```
+
+
+
+
+
+### Modèles sur le Cholestérol{.tabset} 
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_ac_c))
+```
+
+Modèle 1 : Cholestérol + age  
+Modèle 2 : Cholestérol + age + sexe  
+Modèle 3 : Cholestérol + age + sexe + APOE  
+Modèle 4 : Cholestérol + age + sexe + APOE + Traitements  
+Modèle 5 : Cholestérol + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Cholestérol + age + sexe + APOE + Traitements + MMSE + IMC  
+
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol.mod = lm(abeta42_ ~ cholesterol_total + age, data = data_ac_c)
+mod = abeta42_cholesterol.mod
+var = data_ac_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_c$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol2.mod = lm(abeta42_ ~ cholesterol_total+ age + sexe , data = data_ac_c)
+mod = abeta42_cholesterol2.mod
+var = data_ac_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_c$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol3.mod = lm(abeta42_ ~ cholesterol_total + age+ sexe + apoe.reg2 , data = data_ac_c)
+mod = abeta42_cholesterol3.mod
+var = data_ac_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_c$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol4.mod = lm(abeta42_ ~ cholesterol_total + age+ sexe + apoe.reg2 + ch + dia , data = data_ac_c)
+mod = abeta42_cholesterol4.mod
+var = data_ac_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_c$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+
+
+
+#### Modèle 5 {.tabset}
+
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol5.mod = lm(abeta42_ ~ cholesterol_total+ age + sexe + apoe.reg2 + ch + dia + mmse , data = data_ac_c)
+mod = abeta42_cholesterol5.mod
+var = data_ac_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_c$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+#### Modèle 6 {.tabset}
+
+
+##### Modèle
+
+```{r,echo = FALSE}
+abeta42_cholesterol6.mod = lm(abeta42_ ~ cholesterol_total+ age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_ac_c)
+mod = abeta42_cholesterol6.mod
+var = data_ac_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_ac_c$abeta42_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+export_summs(abeta42_cholesterol.mod, abeta42_cholesterol2.mod, abeta42_cholesterol3.mod, abeta42_cholesterol4.mod, abeta42_cholesterol5.mod,abeta42_cholesterol6.mod,
+             scale = TRUE,
+             ci_level = 0.95,
+             error_format = "[{conf.low}, {conf.high}],({p.value})")
+```
+
+
+
+
+
+
+
+
+
+## Tau en catégorie
+### Nombre d'Observations dans les modèles
+
+```{r, echo=FALSE}
+
+print("Modèle")
+
+print(" + taut2")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F)))
+
+print(" + glucose_jeun")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F)))
+
+print(" + triglycerides")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F)))
+
+print(" + cholesterol_total")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F)))
+
+print(" + age")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F)))
+
+print(" + sexe")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F)))
+
+print(" + apoe.reg2")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F)))
+
+print(" + ch")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F)))
+
+print(" + mmse")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F)))
+
+
+
+print(" + dia")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(dia) == F)))
+
+print(" + imc")
+paste0("N = ",nrow(filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)))
+
+
+data_tm = filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+
+data_tm_g = filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+data_tm_t = filter(data2, is.na(taut2) == F,
+               is.na(triglycerides) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+data_tm_c = filter(data2, is.na(taut2) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+```
+
+### Tableau de fréquence
+```{r results='asis',echo = FALSE}
+data_tm$sexe = as.factor(data_tm$sexe)
+data_tm$ch = as.factor(data_tm$ch)
+data_tm$dia = as.factor(data_tm$dia)
+data_tm$apoe.reg2 = as.factor(data_tm$apoe.reg2)
+
+labels(data_tm)  <- c(age = 'Age', sexe_reg = "Sexe", glucose_jeun = "Glucose",apoe.reg2 = "Présence E4", mmse = "MMSE", ch = "Traitement cholesterol", dia = "Traitement Diabete",triglycerides = "Triglycerides",cholesterol_total = "Cholesterol",cholesterol_hdl = "Cholesterol hdl",cholesterol_ldl = "Cholesterol ldl",niveau_etude_reg = "Niveau d'étude")
+
+tab1 <- tableby(taut2 ~  age + sexe_reg  + glucose_jeun + triglycerides + cholesterol_total + cholesterol_hdl + cholesterol_ldl + apoe.reg2 + mmse + ch + dia + niveau_etude_reg, data=data_tm)
+summary(tab1, text=TRUE)
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+# Standardisation des variables
+
+data_tm$glucose_jeun = scale(data_tm$glucose_jeun)
+data_tm$triglycerides = scale(data_tm$triglycerides)
+data_tm$cholesterol_total = scale(data_tm$cholesterol_total)
+data_tm$age = data_tm$age/10
+```
+
+### Modèles sur le Glucose {.tabset}
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_tm_g))
+```
+
+Modèle 1 : Glucose + age  
+Modèle 2 : Glucose + age + sexe   
+Modèle 3 : Glucose + age + sexe + APOE  
+Modèle 4 : Glucose + age + sexe + APOE + Traitements  
+Modèle 5 : Glucose + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Glucose + age + sexe + APOE + Traitements + MMSE + IMC  
+
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose_reg <- glm(taut2 ~ glucose_jeun + age, data = data_tm_g, family = binomial(logit))
+reg = tau_glucose_reg
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose_reg2 <- glm(taut2 ~ glucose_jeun + age + sexe , data = data_tm_g, family = binomial(logit))
+reg = tau_glucose_reg2
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose_reg3 <- glm(taut2 ~ glucose_jeun + age + sexe + apoe.reg2 , data = data_tm_g, family = binomial(logit))
+reg = tau_glucose_reg3
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose_reg4 <- glm(taut2 ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia , data = data_tm_g, family = binomial(logit))
+reg = tau_glucose_reg4
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 5 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose_reg5 <- glm(taut2 ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia + mmse , data = data_tm_g, family = binomial(logit))
+reg = tau_glucose_reg5
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+#### Modèle 6 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose_reg6 <- glm(taut2 ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_tm_g, family = binomial(logit))
+reg = tau_glucose_reg6
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+t1 = tbl_regression(tau_glucose_reg, exponentiate = TRUE)
+t2 = tbl_regression(tau_glucose_reg2, exponentiate = TRUE)
+t3 = tbl_regression(tau_glucose_reg3, exponentiate = TRUE)
+t4 = tbl_regression(tau_glucose_reg4, exponentiate = TRUE)
+t5 = tbl_regression(tau_glucose_reg5, exponentiate = TRUE)
+t6 = tbl_regression(tau_glucose_reg6, exponentiate = TRUE)
+
+
+
+tau_glucose_tab <-
+  tbl_merge(
+    tbls = list(t1, t2,t3,t4,t5,t6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tau_glucose_tab
+```
+
+### Modèles sur la Triglycéride {.tabset}
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_tm_t))
+```
+
+Modèle 1 : Triglycéride + age  
+Modèle 2 : Triglycéride + age + sexe  
+Modèle 3 : Triglycéride + age + sexe + APOE  
+Modèle 4 : Triglycéride + age + sexe + APOE + Traitements  
+Modèle 5 : Triglycéride + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Triglycéride + age + sexe + APOE + Traitements + MMSE + IMC  
+
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides_reg <- glm(taut2 ~ triglycerides + age, data = data_tm_t, family = binomial(logit))
+reg = tau_triglycerides_reg
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides_reg2 <- glm(taut2 ~ triglycerides + age + sexe , data = data_tm_t, family = binomial(logit))
+reg = tau_triglycerides_reg2
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides_reg3 <- glm(taut2 ~ triglycerides + age + sexe + apoe.reg2 , data = data_tm_t, family = binomial(logit))
+reg = tau_triglycerides_reg3
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides_reg4 <- glm(taut2 ~ triglycerides + age + sexe + apoe.reg2 + ch + dia , data = data_tm_t, family = binomial(logit))
+reg = tau_triglycerides_reg4
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 5 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides_reg5 <- glm(taut2 ~ triglycerides + age + sexe + apoe.reg2 + ch + dia + mmse , data = data_tm_t, family = binomial(logit))
+reg = tau_triglycerides_reg5
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+#### Modèle 6 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides_reg6 <- glm(taut2 ~ triglycerides + age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_tm_t, family = binomial(logit))
+reg = tau_triglycerides_reg6
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+t1 = tbl_regression(tau_triglycerides_reg, exponentiate = TRUE)
+t2 = tbl_regression(tau_triglycerides_reg2, exponentiate = TRUE)
+t3 = tbl_regression(tau_triglycerides_reg3, exponentiate = TRUE)
+t4 = tbl_regression(tau_triglycerides_reg4, exponentiate = TRUE)
+t5 = tbl_regression(tau_triglycerides_reg5, exponentiate = TRUE)
+t6 = tbl_regression(tau_triglycerides_reg6, exponentiate = TRUE)
+
+
+
+tau_triglycerides_tab <-
+  tbl_merge(
+    tbls = list(t1, t2,t3,t4,t5,t6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tau_triglycerides_tab
+```
+
+### Modèles sur le Cholestérol {.tabset}
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_tm_c))
+```
+
+Modèle 1 : Cholestérol + age  
+Modèle 2 : Cholestérol + age + sexe   
+Modèle 3 : Cholestérol + age + sexe + APOE  
+Modèle 4 : Cholestérol + age + sexe + APOE + Traitements  
+Modèle 5 : Cholestérol + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Cholestérol + age + sexe + APOE + Traitements + MMSE + IMC  
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol_reg <- glm(taut2 ~ cholesterol_total + age, data = data_tm_c, family = binomial(logit))
+reg = tau_cholesterol_reg
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol_reg2 <- glm(taut2 ~ cholesterol_total + age + sexe , data = data_tm_c, family = binomial(logit))
+reg = tau_cholesterol_reg2
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol_reg3 <- glm(taut2 ~ cholesterol_total + age + sexe + apoe.reg2 , data = data_tm_c, family = binomial(logit))
+reg = tau_cholesterol_reg3
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol_reg4 <- glm(taut2 ~ cholesterol_total + age + sexe + apoe.reg2 + ch + dia , data = data_tm_c, family = binomial(logit))
+reg = tau_cholesterol_reg4
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+#### Modèle 5 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol_reg5 <- glm(taut2 ~ cholesterol_total + age + sexe + apoe.reg2 + ch + dia + mmse , data = data_tm_c, family = binomial(logit))
+reg = tau_cholesterol_reg5
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Modèle 6 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol_reg6 <- glm(taut2 ~ cholesterol_total + age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_tm_c, family = binomial(logit))
+reg = tau_cholesterol_reg6
+summary(reg)
+```
+##### Odds ratio
+
+```{r,echo = FALSE}
+odds.ratio(reg)
+```
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+t1 = tbl_regression(tau_glucose_reg, exponentiate = TRUE)
+t2 = tbl_regression(tau_glucose_reg2, exponentiate = TRUE)
+t3 = tbl_regression(tau_glucose_reg3, exponentiate = TRUE)
+t4 = tbl_regression(tau_glucose_reg4, exponentiate = TRUE)
+t5 = tbl_regression(tau_glucose_reg5, exponentiate = TRUE)
+t6 = tbl_regression(tau_glucose_reg6, exponentiate = TRUE)
+
+
+
+tau_glucose_tab <-
+  tbl_merge(
+    tbls = list(t1, t2,t3,t4,t5,t6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tau_glucose_tab
+```
+
+
+## Tau en continu 
+
+### Nombre d'Observations dans les modèles
+
+```{r, echo=FALSE}
+
+print("Modèle")
+
+print(" + tau_")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F)))
+
+print(" + glucose_jeun")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F)))
+
+print(" + triglycerides")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F)))
+
+print(" + cholesterol_total")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F)))
+
+print(" + age")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F)))
+
+print(" + sexe")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F)))
+
+print(" + apoe.reg2")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F)))
+
+print(" + ch")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F)))
+
+print(" + mmse")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F)))
+
+
+
+print(" + dia")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(dia) == F)))
+
+print(" + imc")
+paste0("N = ",nrow(filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)))
+
+data_tc = filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+data_tc_g = filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+data_tc_t = filter(data2, is.na(tau_) == F,
+               is.na(triglycerides) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+data_tc_c = filter(data2, is.na(tau_) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+data_tc = filter(data2, is.na(tau_) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+# Standardisation des variables
+
+data_tc$glucose_jeun = scale(data_tc$glucose_jeun)
+data_tc$triglycerides = scale(data_tc$triglycerides)
+data_tc$cholesterol_total = scale(data_tc$cholesterol_total)
+data_tc$age = data_tc$age/10
+
+```
+### Matrice de corrélation
+
+```{r, echo=FALSE}
+data_tc2 = data_tc %>% select(tau_,glucose_jeun,triglycerides,cholesterol_total,age,sexe,apoe.reg2,ch,dia,mmse)
+
+data_tc_cor = cor(data_tc2)
+
+corrplot(data_tc_cor, type="upper", order="hclust", tl.col="black", tl.srt=45)
+```
+
+
+
+### Modèles sur le Glucose {.tabset}
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_tc_g))
+```
+
+Modèle 1 : Glucose + age  
+Modèle 2 : Glucose + age + sexe  
+Modèle 3 : Glucose + age + sexe + APOE  
+Modèle 4 : Glucose + age + sexe + APOE + Traitements  
+Modèle 5 : Glucose + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Glucose + age + sexe + APOE + Traitements + MMSE + IMC  
+
+#### Modèle 1  {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose.mod = lm(tau_ ~ glucose_jeun + age, data = data_tc_g)
+summary(tau_glucose.mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(tau_glucose.mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_g$tau_ ~ data_tc_g$glucose_jeun, ylab = "Abeta42 std", xlab = "Glucose")
+abline(tau_glucose.mod, col = "red")
+
+```
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose2.mod = lm(tau_ ~ glucose_jeun + age + sexe , data = data_tc_g)
+mod = tau_glucose2.mod
+var = data_tc_g$glucose_jeun
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_g$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose3.mod = lm(tau_ ~ glucose_jeun+ age + sexe + apoe.reg2 , data = data_tc_g)
+mod = tau_glucose3.mod
+var = data_tc_g$glucose_jeun
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_g$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose4.mod = lm(tau_ ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia , data = data_tc_g)
+mod = tau_glucose4.mod
+var = data_tc_g$glucose_jeun
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_g$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Modèle 5 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose5.mod = lm(tau_ ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia + mmse , data = data_tc_g)
+mod = tau_glucose5.mod
+var = data_tc_g$glucose_jeun
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_g$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+#### Modèle 6 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_glucose6.mod = lm(tau_ ~ glucose_jeun + age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_tc_g)
+mod = tau_glucose6.mod
+var = data_tc_g$glucose_jeun
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_g$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+export_summs(tau_glucose.mod, tau_glucose2.mod, tau_glucose3.mod, tau_glucose4.mod, tau_glucose5.mod,tau_glucose6.mod,
+             scale = TRUE,
+             ci_level = 0.95,
+             error_format = "[{conf.low}, {conf.high}],({p.value})")
+```
+
+
+### Modèles sur la Triglycéride {.tabset} 
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_tc_t))
+```
+
+
+Modèle 1 : Triglycéride + age  
+Modèle 2 : Triglycéride + age + sexe  
+Modèle 3 : Triglycéride + age + sexe + APOE  
+Modèle 4 : Triglycéride + age + sexe + APOE + Traitements  
+Modèle 5 : Triglycéride + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Triglycéride + age + sexe + APOE + Traitements + MMSE + IMC  
+
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides.mod = lm(tau_ ~ triglycerides + age, data = data_tc_t)
+mod = tau_triglycerides.mod
+var = data_tc_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_t$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides2.mod = lm(tau_ ~ triglycerides+ age + sexe , data = data_tc_t)
+mod = tau_triglycerides2.mod
+var = data_tc_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_t$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides3.mod = lm(tau_ ~ triglycerides + age + sexe + apoe.reg2, data = data_tc_t)
+mod = tau_triglycerides3.mod
+var = data_tc_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_t$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides4.mod = lm(tau_ ~ triglycerides + age + sexe + apoe.reg2 + ch + dia , data = data_tc_t)
+mod = tau_triglycerides4.mod
+var = data_tc_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_t$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+
+
+
+#### Modèle 5 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides5.mod = lm(tau_ ~ triglycerides + age + sexe + apoe.reg2 + ch + dia + mmse , data = data_tc_t)
+mod = tau_triglycerides5.mod
+var = data_tc_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_t$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+#### Modèle 6 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_triglycerides6.mod = lm(tau_ ~ triglycerides + age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_tc_t)
+mod = tau_triglycerides6.mod
+var = data_tc_t$triglycerides
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_t$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+export_summs(tau_triglycerides.mod, tau_triglycerides2.mod, tau_triglycerides3.mod, tau_triglycerides4.mod, tau_triglycerides5.mod,tau_glucose6.mod,
+             scale = TRUE,
+             ci_level = 0.95,
+             error_format = "[{conf.low}, {conf.high}],({p.value})")
+```
+
+
+### Modèles sur la Cholestérol {.tabset} 
+
+##### Légende
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_tc_c))
+```
+
+Modèle 1 : Cholestérol + age  
+Modèle 2 : Cholestérol + age + sexe  
+Modèle 3 : Cholestérol + age + sexe + APOE  
+Modèle 4 : Cholestérol + age + sexe + APOE + Traitements   
+Modèle 5 : Cholestérol + age + sexe + APOE + Traitements + MMSE  
+Modèle 6 : Cholestérol + age + sexe + APOE + Traitements + MMSE + IMC  
+
+
+
+#### Modèle 1 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol.mod = lm(tau_ ~ cholesterol_total + age, data = data_tc_c)
+mod = tau_cholesterol.mod
+var = data_tc_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_c$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Modèle 2 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol2.mod = lm(tau_ ~ cholesterol_total + age + sexe , data = data_tc_c)
+mod = tau_cholesterol2.mod
+var = data_tc_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_c$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+#### Modèle 3 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol3.mod = lm(tau_ ~ cholesterol_total + age+ sexe + apoe.reg2 , data = data_tc_c)
+mod = tau_cholesterol3.mod
+var = data_tc_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_c$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Modèle 4 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol4.mod = lm(tau_ ~ cholesterol_total + age+ sexe + apoe.reg2 + ch + dia , data = data_tc_c)
+mod = tau_cholesterol4.mod
+var = data_tc_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_c$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Modèle 5 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol5.mod = lm(tau_ ~ cholesterol_total + age + sexe + apoe.reg2 + ch + dia + mmse , data = data_tc_c)
+mod = tau_cholesterol5.mod
+var = data_tc_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_c$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+#### Modèle 6 {.tabset}
+
+##### Modèle
+
+```{r,echo = FALSE}
+tau_cholesterol6.mod = lm(tau_ ~ cholesterol_total + age + sexe + apoe.reg2 + ch + dia + mmse + imc , data = data_tc_c)
+mod = tau_cholesterol6.mod
+var = data_tc_c$cholesterol_total
+summary(mod)
+```
+##### Scatter plot
+
+```{r,echo = FALSE}
+autoplot(mod)
+```
+
+##### Régression linéaire
+
+```{r, echo = FALSE}
+plot(data_tc_c$tau_ ~ var, ylab = "Abeta42 std", xlab = "Glucose")
+abline(mod, col = "red")
+
+```
+
+
+#### Tableau récapitulatif
+
+```{r,echo=FALSE}
+export_summs(tau_cholesterol.mod, tau_cholesterol2.mod, tau_cholesterol3.mod, tau_cholesterol4.mod, tau_cholesterol5.mod,tau_cholesterol6.mod,
+             scale = TRUE,
+             ci_level = 0.95,
+             error_format = "[{conf.low}, {conf.high}],({p.value})")
+```
+
+```{r}
+# Export BDD avec scale variable
+
+"data_export = data.frame(abeta42_continu = data2$abeta42_,
+                         abeta_42_modalite = data2$abeta42t2,
+                         tau_continu = data2$tau_,
+                         tau_modalite = data2$taut2,
+                         glucose = data2$glucose_jeun,
+                         glucose_std = scale(data2$glucose_jeun),
+                         triglycerides = data2$triglycerides,
+                         triglycerides_std = scale(data2$triglycerides),
+                         cholesterol_total = data2$cholesterol_total,
+                         cholesterol_total_std = scale(data2$cholesterol_total),
+                         cholesterol_hdl = data2$cholesterol_hdl,
+                         cholesterol_hdl.std = scale(data2$cholesterol_hdl),
+                         cholesterol_ldl = data2$cholesterol_ldl,
+                         cholesterol_ldl.std = scale(data2$cholesterol_ldl),
+                         education = data2$niveau_etude_reg,
+                         age = data2$age,
+                         sexe = data2$sexe_reg,
+                         apoe = data2$apoe,
+                         traitement_chol = data2$ch,
+                         traitement_dia = data2$dia,
+                         mmse = data2$mmse,
+                         imc = data2$imc
+                         )"
+#write.csv(data_export,"//172.27.137.244/g_boilay/alternance/export/data_export.csv")
+```
+
+
