@@ -1,0 +1,14 @@
+
+# A
+
+tata
+
+```{r}
+nom_projet <- "Mon super projet"
+writeLines(paste0("# ", nom_projet), con = "titre.md")
+```
+
+```{r include=FALSE}
+cat(readLines("titre.md"), sep = "\n")
+```
+toto

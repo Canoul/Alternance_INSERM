@@ -1,0 +1,1794 @@
+[33mcommit 333c12ea4b31924bfe53e290ed835e42ad416fee[m
+Author: GEOFFREY BOILAY <canoul.pro@gmail.com>
+Date:   Wed Jun 28 10:44:51 2023 +0200
+
+    test
+
+[1mdiff --git a/chol_2.Rmd b/chol_2.Rmd[m
+[1mnew file mode 100644[m
+[1mindex 0000000..cf9f585[m
+[1m--- /dev/null[m
+[1m+++ b/chol_2.Rmd[m
+[36m@@ -0,0 +1,5027 @@[m
+[32m+[m[32m---[m
+[32m+[m[32mtitle: "Visualisation Assocation Cholesterol"[m
+[32m+[m[32mauthor: "Geoffrey BOILAY"[m
+[32m+[m[32mdate: "`r format(Sys.time(),'%d %B, %Y')`"[m
+[32m+[m[32moutput:[m
+[32m+[m[32m  html_document:[m
+[32m+[m[32m    toc: yes[m
+[32m+[m[32m    toc_float: true[m
+[32m+[m[32m    collapsed: false[m
+[32m+[m[32m    smooth_scroll: false[m
+[32m+[m[32m    toc_depth: '4'[m
+[32m+[m[32m    df_print: paged[m
+[32m+[m[32m  pdf_document:[m
+[32m+[m[32m    toc: true[m
+[32m+[m[32m    toc_depth: 4[m
+[32m+[m[32m---[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m```{r, echo = FALSE}[m
+[32m+[m[32m# Importation[m
+[32m+[m
+[32m+[m[32m#data = read.csv("//172.27.137.244/g_boilay$/bureau/data2.csv")[m
+[32m+[m[32mdata = read.csv("C:/Users/g_boilay/Documents/data2.csv")[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r , echo = FALSE, message = FALSE, warning = FALSE}[m
+[32m+[m[32m#Library[m
+[32m+[m
+[32m+[m[32mlibrary(tidyverse)[m
+[32m+[m[32mlibrary(dplyr)[m
+[32m+[m[32mlibrary(stringr)[m
+[32m+[m[32mlibrary(janitor)[m
+[32m+[m[32mlibrary(corrplot)[m
+[32m+[m[32mlibrary(BBmisc)[m
+[32m+[m[32mlibrary(lubridate)[m
+[32m+[m[32mlibrary(arsenal)[m
+[32m+[m[32mlibrary(ggfortify)[m
+[32m+[m[32mlibrary(lmtest)[m
+[32m+[m[32mlibrary(questionr)[m
+[32m+[m[32mlibrary(broom)[m
+[32m+[m[32mlibrary(broom.helpers)[m
+[32m+[m[32mlibrary(ggeffects)[m
+[32m+[m[32mlibrary(jtools)[m
+[32m+[m[32mlibrary("writexl")[m
+[32m+[m[32mlibrary(gtsummary)[m
+[32m+[m[32mlibrary(gt)[m
+[32m+[m[32mlibrary(ggcorrplot)[m
+[32m+[m[32mlibrary(vcd)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r, echo = FALSE}[m
+[32m+[m[32m# glm[m
+[32m+[m
+[32m+[m[32mglm_reg = function(y,x,data){[m
+[32m+[m[32m  glm(formula=reformulate(termlabels = x, response= y), data=data, family = binomial(logit))[m
+[32m+[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mglm_m = function(y,x,data){[m
+[32m+[m[32m  base = c("age","sexe","niveau_etude_reg","mmse","ch","dia","hta_med","imc_reg")[m
+[32m+[m[32m  x = c(base,x)[m
+[32m+[m[32m  n0 = length(base)[m
+[32m+[m[32m  n1 = length(x)-n0[m
+[32m+[m[32m  mod = glm_reg(y,x,data)[m
+[32m+[m[32m  inf = length(mod$coefficients)-n1+1[m
+[32m+[m[32m  sup = length(mod$coefficients)[m
+[32m+[m[32m  coef(summary(mod))[inf:sup,][m
+[32m+[m[32m  coef_table = round(coef(summary(mod))[inf:sup,c(1,4)],3)[m
+[32m+[m[41m  [m
+[32m+[m[32m  coef_table[1] <- round(exp(coef_table[1]),2)[m
+[32m+[m
+[32m+[m[41m  [m
+[32m+[m[32m  if(n1 == 1){[m
+[32m+[m[32m    names(coef_table) <- c("Odds Ratio", "p-value")[m
+[32m+[m[32m  }else{[m
+[32m+[m[32m    colnames(coef_table) <- c("Odd Ratio", "p-value")[m
+[32m+[m[32m  }[m
+[32m+[m[41m  [m
+[32m+[m[32m  return(coef_table)[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r, echo = FALSE}[m
+[32m+[m[32m# lm[m
+[32m+[m
+[32m+[m[32mlm_reg = function(y,x,data){[m
+[32m+[m[32m  lm(formula=reformulate(termlabels = x, response= y), data=data)[m
+[32m+[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mlm_m = function(y,x,data){[m
+[32m+[m[32m  base = c("age","sexe","niveau_etude_reg","mmse","ch","dia","hta_med","imc_reg")[m
+[32m+[m[32m  x = c(base,x)[m
+[32m+[m[32m  n0 = length(base)[m
+[32m+[m[32m  n1 = length(x)-n0[m
+[32m+[m[32m  mod = lm_reg(y,x,data)[m
+[32m+[m[32m  inf = length(mod$coefficients)-n1+1[m
+[32m+[m[32m  sup = length(mod$coefficients)[m
+[32m+[m[32m  coef(summary(mod))[inf:sup,][m
+[32m+[m[32m  coef_table = round(coef(summary(mod))[inf:sup,c(1,4)],3)[m
+[32m+[m[41m  [m
+[32m+[m[32m  return(coef_table)[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m```{r, echo = FALSE}[m
+[32m+[m[32mdata$apoe.reg3[data$apoe.reg2 == 0] = 0[m
+[32m+[m[32mdata$apoe.reg3[data$apoe.reg2 == 1] = 1[m
+[32m+[m[32mdata$apoe.reg3[data$apoe.reg2 == 2] = 1[m
+[32m+[m
+[32m+[m[32mdata$ma2 <- FALSE[m
+[32m+[m[32mdata$ma2[data$diagnostic_cli == 1] <- 1[m
+[32m+[m[32mdata$ma2[data$diagnostic_cli == 2] <- 2[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdata$ma4[data$diagnostic_cli == 1] = 1[m
+[32m+[m[32mdata$ma4[data$diagnostic_cli > 1] = 0[m
+[32m+[m
+[32m+[m[32mdata$ma = data$ma4[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdata$groupe[data$diagnostic_cli == 1] <- 1[m
+[32m+[m[32mdata$groupe[data$diagnostic_cli == 2] <- 2[m
+[32m+[m[32mdata$groupe[data$diagnostic_cli == 3] <- 3[m
+[32m+[m[32mdata$groupe[data$diagnostic_cli > 3] <- 4[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m# Objectif[m
+[32m+[m
+[32m+[m[32mTrouver d'éventuelles associations en les marqueurs de la maladie d'Alzheimer et le Cholesterol (total, HDL et LDL)[m[41m  [m
+[32m+[m[32m<br>[m
+[32m+[m[32mLes valeurs du cholesterol sont standardisés[m[41m  [m
+[32m+[m[32mLes valeurs de l'Abeta42 en continues sont standardisées sur leur logarithme et multiplié par -1[m[41m  [m
+[32m+[m[32mLes valeurs de ptau en continues sont standardisées sur leur logarithme et multiplié par -1[m[41m  [m
+[32m+[m
+[32m+[m
+[32m+[m[32m# Etude d'association[m
+[32m+[m
+[32m+[m[32m## Abeta42 en dichotomique {.tabset}[m
+[32m+[m
+[32m+[m[32m### Modèle de base[m
+[32m+[m
+[32m+[m[32mLe modèle de base comporte les variables suivantes :[m[41m  [m
+[32m+[m[32m- Age[m[41m  [m
+[32m+[m[32m- Sexe[m[41m  [m
+[32m+[m[32m- Niveau d'étude[m[41m  [m
+[32m+[m[32m- MMSE[m[41m  [m
+[32m+[m[32m- Les traitements[m[41m  [m
+[32m+[m[32m- IMC[m[41m  [m
+[32m+[m[32m- APOE[m[41m  [m
+[32m+[m
+[32m+[m[32m```{r, echo = FALSE}[m
+[32m+[m[32m#data_chol abeta42 dichotomique[m
+[32m+[m
+[32m+[m[32mdata_chol = filter(data, is.na(abeta42t2) == F,[m
+[32m+[m[32m               is.na(age) == F,[m
+[32m+[m[32m               is.na(sexe) == F,[m
+[32m+[m[32m               is.na(apoe.reg2) == F,[m
+[32m+[m[32m               is.na(mmse) == F,[m
+[32m+[m[32m               is.na(ch) == F,[m
+[32m+[m[32m               is.na(dia) == F,[m
+[32m+[m[32m               is.na(hta_med) == F,[m
+[32m+[m[32m               is.na(imc_reg) == F,[m
+[32m+[m[32m               is.na(presence_biomarqueur) == F,[m
+[32m+[m[32m               is.na(niveau_etude_reg) == F,[m
+[32m+[m[32m               is.na(ma) == F[m
+[32m+[m[32m               )[m
+[32m+[m
+[32m+[m[32mdata_chol$cholesterol_total = scale(data_chol$cholesterol_total)[m
+[32m+[m[32mdata_chol$cholesterol_hdl = scale(data_chol$cholesterol_hdl)[m
+[32m+[m[32mdata_chol$cholesterol_ldl = scale(data_chol$cholesterol_ldl)[m
+[32m+[m
+[32m+[m[32mdata_chol$sexe = as.factor(data_chol$sexe)[m
+[32m+[m[32mdata_chol$ch = as.factor(data_chol$ch)[m
+[32m+[m[32mdata_chol$dia = as.factor(data_chol$dia)[m
+[32m+[m[32mdata_chol$hta_med = as.factor(data_chol$hta_med)[m
+[32m+[m[32mdata_chol$apoe.reg2 = as.factor(data_chol$apoe.reg2)[m
+[32m+[m[32mdata_chol$ma = as.factor(data_chol$ma)[m
+[32m+[m[32mdata_chol$ma_mci = as.factor(data_chol$ma_mci)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdata_ma_0 = data_chol %>% filter(ma == 0)[m
+[32m+[m[32mdata_ma_1 = data_chol %>% filter(ma == 1)[m
+[32m+[m
+[32m+[m[32mdata_mamci_0 = data_chol %>% filter(ma_mci == 0)[m
+[32m+[m[32mdata_mamci_1 = data_chol %>% filter(ma_mci == 1)[m
+[32m+[m
+[32m+[m[32mdata_apoe_0 = data_chol %>% filter(apoe.reg2 == 0)[m
+[32m+[m[32mdata_apoe_1 = data_chol %>% filter(apoe.reg2 != 0)[m
+[32m+[m
+[32m+[m[32mdata_ma2_0 = data_chol %>% filter(ma2 == 0)[m
+[32m+[m[32mdata_ma2_1 = data_chol %>% filter(ma2 == 1)[m
+[32m+[m[32mdata_ma2_2 = data_chol %>% filter(ma2 == 2)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdata_groupe_1 = data_chol %>% filter(groupe == 1)[m
+[32m+[m[32mdata_groupe_2 = data_chol %>% filter(groupe == 2)[m
+[32m+[m[32mdata_groupe_3 = data_chol %>% filter(groupe == 3)[m
+[32m+[m[32mdata_groupe_4 = data_chol %>% filter(groupe == 4)[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32my = "abeta42t2"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m### Par groupe d'APOE {.tabset}[m
+[32m+[m
+[32m+[m[32mLa variable APOE n'est plus dans le modèle de base[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32mg = "apoe.reg3"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m#### cholesterol_total {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_total"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,g)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_hdl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_hdl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_ldl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_ldl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m### Par groupe d'APOE ajusté sur G sur MA {.tabset}[m
+[32m+[m
+[32m+[m[32mLa variable APOE n'est plus dans le modèle de base[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32mg = "apoe.reg3"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m#### cholesterol_total {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_total"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma",g)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma", g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_hdl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_hdl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma",g)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma", g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_ldl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_ldl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma",g)[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma", g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m### En fonction du diagnostic (MA/non MA) {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32mg = "ma"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_total {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_total"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3",paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_ma_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_ma_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_ma_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_ma_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_hdl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_hdl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3",paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_ma_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_ma_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_ma_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_ma_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m#### cholesterol_ldl {.tabset}[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_ldl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3",paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_ma_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_ma_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_ma_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_ma_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m### En fonction du diagnostic (MA+MCI/non MA non MCI) {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32mg = "ma_mci"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m#### cholesterol_total {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_total"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3",paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_mamci_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_mamci_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_mamci_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_mamci_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_hdl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_hdl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3",paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_mamci_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_mamci_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_mamci_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_mamci_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_ldl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_ldl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3",paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_mamci_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_mamci_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_mamci_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_mamci_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m### Par groupe de diagnostic (MA/MCI/MCI autres/Autres) {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32mg = "groupe"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_total {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_total"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3",paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_groupe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_groupe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 2[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_groupe_2))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_groupe_2)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 3[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_groupe_3))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_groupe_3)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 4[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_groupe_4))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mglm_m(y,t,data_groupe_4)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m#### cholesterol_hdl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_hdl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3",paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_ma_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_ma_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_ma_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_ma_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m#### cholesterol_ldl {.tabset}[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_ldl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3",paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_ma_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_ma_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_ma_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_ma_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m## Abeta42 en continue {.tabset}[m
+[32m+[m
+[32m+[m[32m### Modèle de base[m
+[32m+[m
+[32m+[m[32mLe modèle de base comporte les variables suivantes :[m[41m  [m
+[32m+[m[32m- Age[m[41m  [m
+[32m+[m[32m- Sexe[m[41m  [m
+[32m+[m[32m- Niveau d'étude[m[41m  [m
+[32m+[m[32m- MMSE[m[41m  [m
+[32m+[m[32m- Les traitements[m[41m  [m
+[32m+[m[32m- IMC[m[41m  [m
+[32m+[m[32m- APOE[m[41m  [m
+[32m+[m
+[32m+[m[32m```{r, echo = FALSE}[m
+[32m+[m[32m#data_chol abeta42 continue[m
+[32m+[m
+[32m+[m[32mdata_chol = filter(data, is.na(abeta42) == F,[m
+[32m+[m[32m               is.na(age) == F,[m
+[32m+[m[32m               is.na(sexe) == F,[m
+[32m+[m[32m               is.na(apoe.reg2) == F,[m
+[32m+[m[32m               is.na(mmse) == F,[m
+[32m+[m[32m               is.na(ch) == F,[m
+[32m+[m[32m               is.na(dia) == F,[m
+[32m+[m[32m               is.na(hta_med) == F,[m
+[32m+[m[32m               is.na(imc_reg) == F,[m
+[32m+[m[32m               is.na(presence_biomarqueur) == F,[m
+[32m+[m[32m               is.na(niveau_etude_reg) == F,[m
+[32m+[m[32m               is.na(ma) == F[m
+[32m+[m[32m               )[m
+[32m+[m
+[32m+[m[32mdata_chol$cholesterol_total = scale(data_chol$cholesterol_total)[m
+[32m+[m[32mdata_chol$cholesterol_hdl = scale(data_chol$cholesterol_hdl)[m
+[32m+[m[32mdata_chol$cholesterol_ldl = scale(data_chol$cholesterol_ldl)[m
+[32m+[m
+[32m+[m[32mdata_chol$sexe = as.factor(data_chol$sexe)[m
+[32m+[m[32mdata_chol$ch = as.factor(data_chol$ch)[m
+[32m+[m[32mdata_chol$dia = as.factor(data_chol$dia)[m
+[32m+[m[32mdata_chol$hta_med = as.factor(data_chol$hta_med)[m
+[32m+[m[32mdata_chol$apoe.reg2 = as.factor(data_chol$apoe.reg2)[m
+[32m+[m[32mdata_chol$ma = as.factor(data_chol$ma)[m
+[32m+[m[32mdata_chol$ma_mci = as.factor(data_chol$ma_mci)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdata_ma_0 = data_chol %>% filter(ma == 0)[m
+[32m+[m[32mdata_ma_1 = data_chol %>% filter(ma == 1)[m
+[32m+[m
+[32m+[m[32mdata_mamci_0 = data_chol %>% filter(ma_mci == 0)[m
+[32m+[m[32mdata_mamci_1 = data_chol %>% filter(ma_mci == 1)[m
+[32m+[m
+[32m+[m[32mdata_apoe_0 = data_chol %>% filter(apoe.reg2 == 0)[m
+[32m+[m[32mdata_apoe_1 = data_chol %>% filter(apoe.reg2 != 0)[m
+[32m+[m
+[32m+[m[32mdata_ma2_0 = data_chol %>% filter(ma2 == 0)[m
+[32m+[m[32mdata_ma2_1 = data_chol %>% filter(ma2 == 1)[m
+[32m+[m[32mdata_ma2_2 = data_chol %>% filter(ma2 == 2)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdata_groupe_1 = data_chol %>% filter(groupe == 1)[m
+[32m+[m[32mdata_groupe_2 = data_chol %>% filter(groupe == 2)[m
+[32m+[m[32mdata_groupe_3 = data_chol %>% filter(groupe == 3)[m
+[32m+[m[32mdata_groupe_4 = data_chol %>% filter(groupe == 4)[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32my = "abeta42"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m### Par groupe d'APOE {.tabset}[m
+[32m+[m
+[32m+[m[32mLa variable APOE n'est plus dans le modèle de base[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32mg = "apoe.reg3"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m#### cholesterol_total {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_total"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,g)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_hdl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_hdl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_ldl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_ldl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m### Par groupe d'APOE ajusté sur G sur MA {.tabset}[m
+[32m+[m
+[32m+[m[32mLa variable APOE n'est plus dans le modèle de base[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32mg = "apoe.reg3"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m#### cholesterol_total {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_total"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma",g)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma", g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_hdl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_hdl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma",g)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma", g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_ldl {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_ldl"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma",g)[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Intéraction[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma", g,paste0(g,"*",a))[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 0[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_0))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_0)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G 1[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_apoe_1))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"ma")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_apoe_1)[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m### En fonction du diagnostic (MA/non MA) {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32mg = "ma"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m
+[32m+[m[32m#### cholesterol_total {.tabset}[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m[32ma = "cholesterol_total"[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m##### G all[m
+[32m+[m
+[32m+[m[32m```{r,echo=FALSE}[m[41m  [m
+[32m+[m[32mpaste0("N = ",nrow(data_chol))[m[41m [m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### Modèle de base[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a,"apoe.reg3")[m
+[32m+[m
+[32m+[m[32mlm_m(y,t,data_chol)[m
+[32m+[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m###### ajusté sur G[m
+[32m+[m[32m```{r,echo=FALSE}[m
+[32m+[m
+[32m+[m[32mt = c(a, g,"apoe.reg3")[m
+[32m
