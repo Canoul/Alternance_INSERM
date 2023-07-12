@@ -175,7 +175,7 @@ data_ma_1 = data_chol_outlier %>% filter(ma == 1)
 
 ### Tableau en fonction du diagnostic maladie d'Alzheimer
 
-![](C:\Users\g_boilay\Pictures\tableau1.png)
+![](C:\Users\g_boilay\Pictures\tableau_MA.png)
 
 ### Tableau en fonction du diagnostic
 
@@ -184,7 +184,16 @@ Groupe 2 = MCI
 Groupe 3 = MCI autres  
 Groupe 4 = Autres  
 
-![](C:\Users\g_boilay\Pictures\tableau2.png)
+![](C:\Users\g_boilay\Pictures\tableau_groupe.png)
+
+### Tableau en fonction de l'APOE
+
+![](C:\Users\g_boilay\Pictures\tableau_APOE.png)
+
+### Tableau en fonction de MA/MCI
+
+![](C:\Users\g_boilay\Pictures\tableau_MAMCI.png)
+
 
 
 ## Cholesterol²{.tabset}
@@ -365,15 +374,6 @@ modte = lm(abeta42 ~ chol1 + chol2 + age + sexe + niveau_etude_reg
           + mmse + ch + dia + hta_med + imc_reg + apoe.reg2, data = data_ma_0)
 summary(modte)
 ```
-
-
-
-
-
-
-
-
-
 
 
 
@@ -743,7 +743,6 @@ d = data_chol
 y = "abeta42"
 
 summary(lm_reg(y,m1,d))
-
 ```
 ### Modèle simple avec Chol²
 

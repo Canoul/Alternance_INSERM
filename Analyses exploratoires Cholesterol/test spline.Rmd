@@ -1,0 +1,472 @@
+---
+title: "Visualisation Assocation Cholesterol"
+author: "Geoffrey BOILAY"
+date: "`r format(Sys.time(),'%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    collapsed: false
+    smooth_scroll: false
+    toc_depth: '4'
+    df_print: paged
+  pdf_document:
+    toc: true
+    toc_depth: 4
+---
+
+# Objectif
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+#Library
+
+library(tidyverse)
+library(dplyr)
+library(stringr)
+library(janitor)
+library(corrplot)
+library(BBmisc)
+library(lubridate)
+library(arsenal)
+library(ggfortify)
+library(lmtest)
+library(questionr)
+library(broom)
+library(broom.helpers)
+library(ggeffects)
+library(jtools)
+library("writexl")
+library(gtsummary)
+library(gt)
+library(ggcorrplot)
+library(vcd)
+library(splines)
+library(npreg)
+library(segmented)
+library(Ecdat)
+library(mgcv)
+library(gratia)
+library(mgcViz)
+```
+
+L'Objectif est de trouver une éventuelle assiociation entre le cholesterol et l'abeta42.  
+Pour y parvenir, nous allons analyser la relation entre ces deux facteurs et segmenter l'association linéaire.
+
+```{r,echo=FALSE}
+# glm
+
+glm_reg = function(y,x,data){
+  glm(formula=reformulate(termlabels = x, response= y), data=data, family = binomial(logit))
+}
+
+# lm
+  
+lm_reg = function(y,x,data){
+  lm(formula=reformulate(termlabels = x, response= y), data=data)  
+}  
+```
+
+```{r,echo=FALSE}
+#Import
+
+data = read.csv("C:/Users/g_boilay/Documents/data2.csv")
+
+```
+
+```{r}
+## outlier
+
+data_chol_outlier = filter(data, is.na(abeta42) == F,
+                   is.na(age) == F,
+                   is.na(sexe) == F,
+                   is.na(apoe.reg2) == F,
+                   is.na(mmse) == F,
+                   is.na(ch) == F,
+                   is.na(dia) == F,
+                   is.na(hta_med) == F,
+                   is.na(imc_reg) == F,
+                   is.na(presence_biomarqueur) == F,
+                   is.na(niveau_etude_reg) == F,
+                   is.na(cholesterol_total) == F,
+                   cholesterol_total < 3.5,
+                   is.na(ma) == F
+)
+
+data_chol_outlier$cholesterol_total = scale(data_chol_outlier$cholesterol_total)
+data_chol_outlier$cholesterol_hdl = scale(data_chol_outlier$cholesterol_hdl)
+data_chol_outlier$cholesterol_ldl = scale(data_chol_outlier$cholesterol_ldl)
+
+data_ma_outlier_0 = data_chol_outlier %>% filter(ma == 0)
+data_ma_outlier_1 = data_chol_outlier %>% filter(ma == 1)
+```
+
+```{r}
+summary(data_chol_outlier$cholesterol_total)
+```
+```{r}
+model = lm(abeta42~bs(cholesterol_total,knots = c(-0.743737,-0.006721 ,0.621910)),data = data_chol_outlier)
+model
+```
+
+```{r}
+chollims = range(data_chol_outlier$cholesterol_total)
+
+cholesterol_total.grid = seq(from = chollims[1], to = chollims[2])
+
+pred = predict(model,newdata = list(cholesterol_total = cholesterol_total.grid),se = T)
+```
+
+```{r}
+plot(data_chol_outlier$cholesterol_total, data_chol_outlier$abeta42, main = "Regression Spline Plot")
+lines(cholesterol_total.grid,pred$fit,col = "red", lwd = 3)
+lines(cholesterol_total.grid,pred$fit+2*pred$se,lty = "dashed",col = "green", lwd = 2)
+lines(cholesterol_total.grid,pred$fit-2*pred$se,lty = "dashed",col = "green", lwd = 2)
+segments(-0.743737,-5,x1 = -0.743737,y1 = 5000000, col = "blue")
+segments(-0.006721,-5,x1 = -0.006721,y1 = 5000000, col = "blue")
+segments(-0.621910,-5,x1 = -0.621910,y1 = 5000000, col = "blue")
+
+```
+```{r}
+model2 = lm(abeta42~bs(cholesterol_total,df= 4) + ns(age, df = 3) + sexe,data = data_chol_outlier)
+
+
+# Plot du modèle
+df <- data.frame(x = data_chol_outlier$cholesterol_total, k = data_chol_outlier$age, z = data_chol_outlier$sexe, y = data_chol_outlier$abeta42)  # Créer un data frame avec les variables
+ggplot(df, aes(x = x, y = y, color = z)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ ns(x, df = 4) + ns(k, df = 3), se = FALSE) +
+  labs(x = "x", y = "y", color = "z") +
+  scale_color_manual(values = c("blue", "red"))
+```
+```{r}
+data_chol_outlier$imc_reg = as.factor(data_chol_outlier$imc_reg)
+
+mod_gam = gam(abeta42 ~ s(cholesterol_total) + s(age) + s(imc_reg,bs = "fs"), data = data_chol_outlier)
+#summary(mod_gam)
+
+plot(ggeffects::ggpredict(mod_gam), facets = TRUE)
+gratia::draw(mod_gam)
+```
+```{r}
+# Note that mod_gam2$model is the data that was used in the modeling process, 
+# so it will have NAs removed.
+testdata = data.frame(
+  cholesterol_total = seq(.4, 1, length = 100),
+  imc_reg   = mean(mod_gam$model$imc_reg),
+  age = mean(mod_gam$model$age)
+)
+
+predictions = predict(
+  mod_gam,
+  newdata = testdata,
+  type = 'response',
+  se = TRUE
+)
+
+df_preds = data.frame(testdata, predictions) %>%
+  mutate(lower = fit - 1.96 * se.fit,
+         upper = fit + 1.96 * se.fit)
+
+ggplot(aes(x = cholesterol_total, y = fit), data = df_preds) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = 'gray92') +
+  geom_line(color = '#56B4E9')
+```
+```{r}
+b <- gam(abeta42 ~ s(cholesterol_total) + s(age) + imc_reg, data = data_chol_outlier)
+
+# Nuage de points (abeta42 ~ cholesterol_total) avec le modèle GAM
+plot(data_chol_outlier$cholesterol_total, data_chol_outlier$abeta42, 
+     xlab = "cholesterol_total", ylab = "abeta42", main = "Nuage de points")
+
+# Ajout de la représentation du modèle GAM
+x_range <- range(data_chol_outlier$cholesterol_total)  # Plage des valeurs de cholesterol_total
+x_grid <- seq(from = x_range[1], to = x_range[2], length.out = 100)  # Grille de valeurs de cholesterol_total
+
+# Création du dataframe avec les variables du modèle pour évaluer les prédictions
+newdata <- data.frame(cholesterol_total = x_grid, age = mean(data_chol_outlier$age), imc_reg = levels(data_chol_outlier$imc_reg)[1])
+
+y_pred <- predict(b, newdata = newdata)  # Prédictions du modèle sur la grille
+
+lines(x_grid, y_pred, col = "red", lwd = 2)  # Ajout de la courbe du modèle
+```
+```{r}
+# Chargement du package mgcv
+library(mgcv)
+
+# Ajustement du modèle GAM avec splines pour variables catégorielles
+b <- gam(abeta42 ~ s(cholesterol_total) + s(age) + s(imc_reg, bs = "fs") + s(sexe, bs = "fs"), 
+         data = data_chol_outlier, method = "REML")
+
+# Nuage de points (abeta42 ~ cholesterol_total) avec le modèle GAM
+plot(data_chol_outlier$cholesterol_total, data_chol_outlier$abeta42, 
+     xlab = "cholesterol_total", ylab = "abeta42", main = "Nuage de points")
+
+# Ajout de la représentation du modèle GAM
+x_range <- range(data_chol_outlier$cholesterol_total)  # Plage des valeurs de cholesterol_total
+x_grid <- seq(from = x_range[1], to = x_range[2], length.out = 100)  # Grille de valeurs de cholesterol_total
+
+# Création du dataframe avec les variables du modèle pour évaluer les prédictions
+newdata <- data.frame(cholesterol_total = x_grid, age = mean(data_chol_outlier$age), imc_reg = levels(data_chol_outlier$imc_reg), sexe = levels(data_chol_outlier$sexe))
+
+y_pred <- predict(b, newdata = newdata)  # Prédictions du modèle sur la grille
+
+lines(x_grid, y_pred, col = "red", lwd = 2)  # Ajout de la courbe du modèle
+
+```
+
+```{r}
+
+
+# Ajustement du modèle GAM avec splines pour variables catégorielles
+b <- gam(abeta42 ~ s(cholesterol_total) + s(age) + s(imc_reg, bs = "fs") + s(sexe, bs = "fs") + s(apoe.reg2,bs = "fs"), 
+         data = data_chol_outlier, method = "REML")
+
+# Nuage de points (abeta42 ~ cholesterol_total) avec le modèle GAM
+plot(data_chol_outlier$cholesterol_total, data_chol_outlier$abeta42, 
+     xlab = "cholesterol_total", ylab = "abeta42", main = "Nuage de points")
+
+# Ajout de la représentation du modèle GAM
+x_range <- range(data_chol_outlier$cholesterol_total)  # Plage des valeurs de cholesterol_total
+x_grid <- seq(from = x_range[1], to = x_range[2], length.out = 100)  # Grille de valeurs de cholesterol_total
+
+# Création du dataframe avec les variables du modèle pour évaluer les prédictions
+newdata <- data.frame(cholesterol_total = x_grid, age = mean(data_chol_outlier$age), imc_reg = levels(data_chol_outlier$imc_reg), apoe.reg2 = levels(data_chol_outlier$apoe.reg2), sexe = levels(data_chol_outlier$sexe))
+
+y_pred <- predict(b, newdata = newdata)  # Prédictions du modèle sur la grille
+
+lines(x_grid, y_pred, col = "red", lwd = 2)  # Ajout de la courbe du modèle
+
+```
+
+
+
+
+
+```{r}
+# Conversion des variables en facteurs
+data_chol_outlier$sexe <- as.factor(data_chol_outlier$sexe)
+data_chol_outlier$niveau_etude_reg <- as.factor(data_chol_outlier$niveau_etude_reg)
+data_chol_outlier$ch <- as.factor(data_chol_outlier$ch)
+data_chol_outlier$dia <- as.factor(data_chol_outlier$dia)
+data_chol_outlier$hta_med <- as.factor(data_chol_outlier$hta_med)
+data_chol_outlier$apoe.reg2 <- as.factor(data_chol_outlier$apoe.reg2)
+```
+
+
+```{r}
+
+# Ajustement du modèle GAM avec les variables supplémentaires en tant que facteurs
+b <- gam(abeta42 ~ s(cholesterol_total) + s(age) + s(imc_reg, bs = "fs") + sexe + niveau_etude_reg + mmse + ch + dia + hta_med + apoe.reg2,
+         data = data_chol_outlier, method = "REML")
+
+# Nuage de points (abeta42 ~ cholesterol_total) avec le modèle GAM
+plot(data_chol_outlier$cholesterol_total, data_chol_outlier$abeta42,
+     xlab = "cholesterol_total", ylab = "abeta42", main = "Nuage de points")
+
+# Ajout de la représentation du modèle GAM
+x_range <- range(data_chol_outlier$cholesterol_total)  # Plage des valeurs de cholesterol_total
+x_grid <- seq(from = x_range[1], to = x_range[2], length.out = 400)  # Grille de valeurs de cholesterol_total
+
+# Création du dataframe avec les variables du modèle pour évaluer les prédictions
+newdata <- data.frame(cholesterol_total = x_grid,
+                      age = mean(data_chol_outlier$age),
+                      imc_reg = rep(levels(data_chol_outlier$imc_reg), each = 400),
+                      sexe = rep(levels(data_chol_outlier$sexe), each = 400),
+                      niveau_etude_reg = rep(levels(data_chol_outlier$niveau_etude_reg), each = 400),
+                      mmse = mean(data_chol_outlier$mmse),
+                      ch = rep(levels(data_chol_outlier$ch), each = 400),
+                      dia = rep(levels(data_chol_outlier$dia), each = 400),
+                      hta_med = rep(levels(data_chol_outlier$hta_med), each = 400),
+                      apoe.reg2 = rep(levels(data_chol_outlier$apoe.reg2), each = 400))
+
+y_pred <- predict(b, newdata = newdata)  # Prédictions du modèle sur la grille
+
+lines(x_grid, y_pred, col = "red", lwd = 2)  # Ajout de la courbe du modèle
+
+
+```
+```{r}
+# Charger les données
+data <- data_chol_outlier
+response <- data_chol_outlier$abeta42
+variable_quantitative <- data_chol_outlier$cholesterol_total
+variable_qualitative1 <- data_chol_outlier$imc_reg
+variable_qualitative2 <- data_chol_outlier$sexe
+variable_qualitative3 <- data_chol_outlier$age
+
+# Spécifier le modèle avec splines
+model <- lm(response ~ ns(variable_quantitative, df = 3) + variable_qualitative1 + variable_qualitative2 + variable_qualitative3, data = data)
+
+# Créer un ensemble de données augmentées
+new_data <- data.frame(variable_quantitative = variable_quantitative,
+                       variable_qualitative1 = variable_qualitative1,
+                       variable_qualitative2 = variable_qualitative2,
+                       variable_qualitative3 = variable_qualitative3)
+
+# Ajouter les prédictions du modèle aux données augmentées
+data_augmented <- augment(model, newdata = new_data)
+
+# Visualiser les relations entre les variables quantitatives et la réponse
+ggplot(data_augmented, aes(x = variable_quantitative, y = response)) +
+  geom_point(data = data) +
+  geom_line(aes(y = .fitted, color = "Predicted"), size = 1) +
+  labs(title = "Relation entre cholesterol_total et abeta42") +
+  theme_minimal()
+```
+
+```{r}
+# Créer une matrice de design avec des termes polynomiaux
+degree <- 2  # Degré du polynôme
+poly_design <- poly(variable_quantitative, degree, raw = TRUE)
+
+# Combiner les variables qualitatives avec la matrice de design polynomiale
+design_matrix <- cbind(poly_design, variable_qualitative1, variable_qualitative2, variable_qualitative3)
+
+# Ajuster le modèle de régression linéaire avec le design polynomial
+model <- lm(response ~ ., data = design_matrix)
+
+# Obtenir les prédictions du modèle
+new_data <- data.frame(variable_quantitative = seq(min(variable_quantitative), max(variable_quantitative), length.out = 100))
+poly_design_new <- poly(new_data$variable_quantitative, degree, raw = TRUE)
+new_design_matrix <- cbind(poly_design_new, variable_qualitative1[1], variable_qualitative2[1], variable_qualitative3[1])
+predictions <- predict(model, newdata = new_design_matrix)
+
+# Visualiser les relations entre la variable quantitative et la réponse
+ggplot(data, aes(x = variable_quantitative, y = response)) +
+  geom_point() +
+  geom_line(data = new_data, aes(y = predictions, color = "Predicted"), size = 1) +
+  labs(title = "Relation entre cholesterol_total et abeta42 (Modèle polynomial)") +
+  theme_minimal()
+```
+
+```{r}
+fit <- lm(abeta42 ~ bs(cholesterol_total, 5) , data = data_chol_outlier)
+
+newdata <- data.frame(cholesterol_total = seq(min(data_chol_outlier$cholesterol_total), max(data_chol_outlier$cholesterol_total), length.out = 100))
+
+ypred <- predict(fit, newdata = newdata, interval = "c")
+
+plot(data_chol_outlier$cholesterol_total, data_chol_outlier$abeta42, cex = 0.5, xlab = "cholesterol_total", ylab = "abeta42")
+lines(newdata$cholesterol_total, ypred[, "fit"], lty = 1, col = "blue", lwd = 2)
+lines(newdata$cholesterol_total, ypred[, "lwr"], lty = 2, col = "blue", lwd = 2)
+lines(newdata$cholesterol_total, ypred[, "upr"], lty = 2, col = "blue", lwd = 2)
+
+```
+
+```{r}
+fit <- lm(abeta42 ~ bs(cholesterol_total, 5) + sexe, data = data_chol_outlier)
+
+newdata <- data.frame(cholesterol_total = seq(min(data_chol_outlier$cholesterol_total), max(data_chol_outlier$cholesterol_total), length.out = 100))
+newdata$sexe <- factor(rep(levels(data_chol_outlier$sexe), length.out = 100))
+
+ypred <- predict(fit, newdata = newdata, interval = "c")
+
+plot(data_chol_outlier$cholesterol_total, data_chol_outlier$abeta42, cex = 0.5, xlab = "cholesterol_total", ylab = "abeta42")
+lines(newdata$cholesterol_total, ypred[, "fit"], lty = 1, col = "blue", lwd = 2)
+lines(newdata$cholesterol_total, ypred[, "lwr"], lty = 2, col = "blue", lwd = 2)
+lines(newdata$cholesterol_total, ypred[, "upr"], lty = 2, col = "blue", lwd = 2)
+
+
+fit <- lm(abeta42 ~ bs(cholesterol_total, 5) + sexe + age, data = data_chol_outlier)
+
+newdata <- data.frame(cholesterol_total = seq(min(data_chol_outlier$cholesterol_total), max(data_chol_outlier$cholesterol_total), length.out = 100))
+newdata$sexe <- factor(rep(levels(data_chol_outlier$sexe), length.out = 100))
+newdata$age <- mean(data_chol_outlier$age)  # Remplacez par la valeur souhaitée pour l'âge
+
+ypred <- predict(fit, newdata = newdata, interval = "c")
+
+plot(data_chol_outlier$cholesterol_total, data_chol_outlier$abeta42, cex = 0.5, xlab = "cholesterol_total", ylab = "abeta42")
+lines(newdata$cholesterol_total, ypred[, "fit"], lty = 1, col = "blue", lwd = 2)
+lines(newdata$cholesterol_total, ypred[, "lwr"], lty = 2, col = "blue", lwd = 2)
+lines(newdata$cholesterol_total, ypred[, "upr"], lty = 2, col = "blue", lwd = 2)
+
+
+fit <- lm(abeta42 ~ bs(cholesterol_total, 5) + sexe + age + niveau_etude_reg, data = data_chol_outlier)
+
+newdata <- data.frame(cholesterol_total = seq(min(data_chol_outlier$cholesterol_total), max(data_chol_outlier$cholesterol_total), length.out = 100))
+newdata$sexe <- factor(rep(levels(data_chol_outlier$sexe), length.out = 100))
+newdata$age <- mean(data_chol_outlier$age)  # Remplacez par la valeur souhaitée pour l'âge
+newdata$niveau_etude_reg <- factor(rep(levels(data_chol_outlier$niveau_etude_reg), length.out = 100))
+
+ypred <- predict(fit, newdata = newdata, interval = "c")
+
+plot(data_chol_outlier$cholesterol_total, data_chol_outlier$abeta42, cex = 0.5, xlab = "cholesterol_total", ylab = "abeta42")
+lines(newdata$cholesterol_total, ypred[, "fit"], lty = 1, col = "blue", lwd = 2)
+lines(newdata$cholesterol_total, ypred[, "lwr"], lty = 2, col = "blue", lwd = 2)
+lines(newdata$cholesterol_total, ypred[, "upr"], lty = 2, col = "blue", lwd = 2)
+```
+
+
+
+
+
+
+
+```{r}
+data_chol_outlier$age_med = data_chol_outlier$age - median(data_chol_outlier$age)
+data_chol_outlier$mmse_med = data_chol_outlier$mmse - median(data_chol_outlier$mmse)
+
+data_chol_outlier$age_med = data_chol_outlier$age - median(data_chol_outlier$age)
+data_chol_outlier$mmse_med = data_chol_outlier$mmse - median(data_chol_outlier$mmse)
+
+data_chol_outlier$niveau_etude_reg <- relevel(data_chol_outlier$niveau_etude_reg, ref = "niveau études intermédiaires")
+data_chol_outlier$imc_reg <- relevel(data_chol_outlier$imc_reg, ref = "Corpulence normale")
+data_chol_outlier$niveau_etude_reg <- relevel(data_chol_outlier$niveau_etude_reg, ref = "niveau études intermédiaires")
+data_chol_outlier$apoe.reg2 <- relevel(data_chol_outlier$apoe.reg2, ref = "0")
+data_chol_outlier$ch <- relevel(data_chol_outlier$ch, ref = "0")
+data_chol_outlier$dia <- relevel(data_chol_outlier$dia, ref = "0")
+data_chol_outlier$hta_med <- relevel(data_chol_outlier$hta_med, ref = "0")
+data_chol_outlier$sexe <- relevel(data_chol_outlier$sexe, ref = "0")
+
+summary(data_chol_outlier$cholesterol_total)
+
+```
+
+```{r}
+data_chol_outlier_f <- dplyr::select(data_chol_outlier,abeta42,cholesterol_total,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour cholesterol_total
+cholesterol_total_range <- seq(-2.781, 2.83, by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_outlier_fictif <- expand.grid(cholesterol_total = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol_outlier$age_med),
+                       mmse_med = median(data_chol_outlier$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0"
+                       )
+
+
+```
+
+
+```{r}
+newdata <- data.frame(cholesterol_total = data_chol_outlier_fictif$cholesterol_total,
+                      sexe = factor(rep(levels(data_chol_outlier$sexe), length.out = nrow(data_chol_outlier_fictif))),
+                      age_med = median(data_chol_outlier$age_med),  # Remplacez par la valeur souhaitée pour age_med
+                      imc_reg = factor(rep(levels(data_chol_outlier$imc_reg), length.out = nrow(data_chol_outlier_fictif))),
+                      niveau_etude_reg = factor(rep(levels(data_chol_outlier$niveau_etude_reg), length.out = nrow(data_chol_outlier_fictif))),
+                      apoe.reg2 = factor(rep(levels(data_chol_outlier$apoe.reg2), length.out = nrow(data_chol_outlier_fictif))),
+                      ch = factor(rep(levels(data_chol_outlier$ch), length.out = nrow(data_chol_outlier_fictif))),
+                      dia = factor(rep(levels(data_chol_outlier$dia), length.out = nrow(data_chol_outlier_fictif))),
+                      hta_med = factor(rep(levels(data_chol_outlier$hta_med), length.out = nrow(data_chol_outlier_fictif))),
+                      mmse_med = mean(data_chol_outlier$mmse_med)  # Remplacez par la valeur souhaitée pour mmse_med
+                      )
+
+newdata = data_chol_outlier_fictif
+
+ypred <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol_outlier$cholesterol_total, data_chol_outlier$abeta42, cex = 0.5, xlab = "cholesterol_total", ylab = "abeta42")
+lines(newdata$cholesterol_total, ypred[, "fit"], lty = 1, col = "blue", lwd = 2)
+lines(newdata$cholesterol_total, ypred[, "lwr"], lty = 2, col = "blue", lwd = 2)
+lines(newdata$cholesterol_total, ypred[, "upr"], lty = 2, col = "blue", lwd = 2)
+
+```
+

@@ -128,6 +128,11 @@ data$groupe[data$diagnostic_cli == 1] <- 1
 data$groupe[data$diagnostic_cli == 2] <- 2
 data$groupe[data$diagnostic_cli == 3] <- 3
 data$groupe[data$diagnostic_cli > 3] <- 4
+
+
+data$abeta42t2[data$abeta42t == "abeta42 faible"] <- TRUE
+data$abeta42t2[data$abeta42t == "abeta42 normal"] <- FALSE
+data$abeta42t2[is.na(data$abeta42t)] <- NA
 ```
 
 
@@ -970,7 +975,7 @@ glm_m(y,t,data_mamci_1)
 #### cholesterol_ldl {.tabset}
 
 ```{r,echo=FALSE}
-a = "cholesterol_ldl"
+a = "cholesterol_total"
 ```
 
 ##### G all
@@ -1030,8 +1035,6 @@ t = c(a,"apoe.reg3")
 
 glm_m(y,t,data_mamci_1)
 ```
-
-
 
 
 
@@ -1146,7 +1149,7 @@ paste0("N = ",nrow(data_chol))
 
 t = c(a,"apoe.reg3")
 
-lm_m(y,t,data_chol)
+glm_m(y,t,data_chol)
 
 ```
 
@@ -1155,7 +1158,7 @@ lm_m(y,t,data_chol)
 
 t = c(a, g,"apoe.reg3")
 
-lm_m(y,t,data_chol)
+glm_m(y,t,data_chol)
 
 ```
 
@@ -1164,41 +1167,66 @@ lm_m(y,t,data_chol)
 
 t = c(a, g,"apoe.reg3",paste0(g,"*",a))
 
-lm_m(y,t,data_chol)
+glm_m(y,t,data_chol)
 
-```
-
-##### G 0
-
-```{r,echo=FALSE}  
-paste0("N = ",nrow(data_ma_0)) 
-```
-
-```{r,echo=FALSE}
-
-t = c(a,"apoe.reg3")
-
-lm_m(y,t,data_ma_0)
 ```
 
 ##### G 1
 ```{r,echo=FALSE}  
-paste0("N = ",nrow(data_ma_1)) 
+paste0("N = ",nrow(data_groupe_1)) 
 ```
 
 ```{r,echo=FALSE}
 
 t = c(a,"apoe.reg3")
 
-lm_m(y,t,data_ma_1)
+glm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_4)
 ```
 
 #### cholesterol_ldl {.tabset}
+
 ```{r,echo=FALSE}
 a = "cholesterol_ldl"
 ```
 
 ##### G all
+
 ```{r,echo=FALSE}  
 paste0("N = ",nrow(data_chol)) 
 ```
@@ -1208,7 +1236,7 @@ paste0("N = ",nrow(data_chol))
 
 t = c(a,"apoe.reg3")
 
-lm_m(y,t,data_chol)
+glm_m(y,t,data_chol)
 
 ```
 
@@ -1217,7 +1245,7 @@ lm_m(y,t,data_chol)
 
 t = c(a, g,"apoe.reg3")
 
-lm_m(y,t,data_chol)
+glm_m(y,t,data_chol)
 
 ```
 
@@ -1226,36 +1254,57 @@ lm_m(y,t,data_chol)
 
 t = c(a, g,"apoe.reg3",paste0(g,"*",a))
 
-lm_m(y,t,data_chol)
+glm_m(y,t,data_chol)
 
-```
-
-##### G 0
-```{r,echo=FALSE}  
-paste0("N = ",nrow(data_ma_0)) 
-```
-
-```{r,echo=FALSE}
-
-t = c(a,"apoe.reg3")
-
-lm_m(y,t,data_ma_0)
 ```
 
 ##### G 1
 ```{r,echo=FALSE}  
-paste0("N = ",nrow(data_ma_1)) 
+paste0("N = ",nrow(data_groupe_1)) 
 ```
 
 ```{r,echo=FALSE}
 
 t = c(a,"apoe.reg3")
 
-lm_m(y,t,data_ma_1)
+glm_m(y,t,data_groupe_1)
 ```
 
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
 
+```{r,echo=FALSE}
 
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_4)
+```
 
 ## Abeta42 en continue {.tabset}
 
@@ -1273,7 +1322,7 @@ Le modèle de base comporte les variables suivantes :
 ```{r, echo = FALSE}
 #data_chol abeta42 continue
 
-data_chol = filter(data, is.na(abeta42) == F,
+data_chol = filter(data, is.na(abeta42t2) == F,
                is.na(age) == F,
                is.na(sexe) == F,
                is.na(apoe.reg2) == F,
@@ -2283,37 +2332,62 @@ lm_m(y,t,data_chol)
 
 ```
 
-##### G 0
-
-```{r,echo=FALSE}  
-paste0("N = ",nrow(data_ma_0)) 
-```
-
-```{r,echo=FALSE}
-
-t = c(a,"apoe.reg3")
-
-lm_m(y,t,data_ma_0)
-```
-
 ##### G 1
 ```{r,echo=FALSE}  
-paste0("N = ",nrow(data_ma_1)) 
+paste0("N = ",nrow(data_groupe_1)) 
 ```
 
 ```{r,echo=FALSE}
 
 t = c(a,"apoe.reg3")
 
-lm_m(y,t,data_ma_1)
+lm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_4)
 ```
 
 #### cholesterol_ldl {.tabset}
+
 ```{r,echo=FALSE}
 a = "cholesterol_ldl"
 ```
 
 ##### G all
+
 ```{r,echo=FALSE}  
 paste0("N = ",nrow(data_chol)) 
 ```
@@ -2345,31 +2419,53 @@ lm_m(y,t,data_chol)
 
 ```
 
-##### G 0
-```{r,echo=FALSE}  
-paste0("N = ",nrow(data_ma_0)) 
-```
-
-```{r,echo=FALSE}
-
-t = c(a,"apoe.reg3")
-
-lm_m(y,t,data_ma_0)
-```
-
 ##### G 1
 ```{r,echo=FALSE}  
-paste0("N = ",nrow(data_ma_1)) 
+paste0("N = ",nrow(data_groupe_1)) 
 ```
 
 ```{r,echo=FALSE}
 
 t = c(a,"apoe.reg3")
 
-lm_m(y,t,data_ma_1)
+lm_m(y,t,data_groupe_1)
 ```
 
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
 
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_4)
+```
 
 ## Ratio Abeta42/Abeta40 {.tabset}
 
@@ -2427,6 +2523,10 @@ data_ma2_0 = data_chol %>% filter(ma2 == 0)
 data_ma2_1 = data_chol %>% filter(ma2 == 1)
 data_ma2_2 = data_chol %>% filter(ma2 == 2)
 
+data_groupe_1 = data_chol %>% filter(groupe == 1)
+data_groupe_2 = data_chol %>% filter(groupe == 2)
+data_groupe_3 = data_chol %>% filter(groupe == 3)
+data_groupe_4 = data_chol %>% filter(groupe == 4)
 ```
 
 ```{r,echo=FALSE}
@@ -3256,6 +3356,275 @@ lm_m(y,t,data_mamci_1)
 
 
 
+### Par groupe de diagnostic (MA/MCI/MCI autres/Autres) {.tabset}
+
+```{r,echo=FALSE}
+g = "groupe"
+```
+
+
+#### cholesterol_total {.tabset}
+
+```{r,echo=FALSE}
+a = "cholesterol_total"
+```
+
+##### G all
+
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_chol)) 
+```
+
+###### Modèle de base
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### ajusté sur G
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### Intéraction
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3",paste0(g,"*",a))
+
+lm_m(y,t,data_chol)
+
+```
+
+##### G 1
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_1)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_4)
+```
+
+#### cholesterol_hdl {.tabset}
+
+```{r,echo=FALSE}
+a = "cholesterol_hdl"
+```
+
+##### G all
+
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_chol)) 
+```
+
+###### Modèle de base
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### ajusté sur G
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### Intéraction
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3",paste0(g,"*",a))
+
+lm_m(y,t,data_chol)
+
+```
+
+##### G 1
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_1)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_4)
+```
+
+#### cholesterol_ldl {.tabset}
+
+```{r,echo=FALSE}
+a = "cholesterol_ldl"
+```
+
+##### G all
+
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_chol)) 
+```
+
+###### Modèle de base
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### ajusté sur G
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### Intéraction
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3",paste0(g,"*",a))
+
+lm_m(y,t,data_chol)
+
+```
+
+##### G 1
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_1)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_4)
+```
+
+
 ## ptau en dichotomique {.tabset}
 
 ### Modèle de base
@@ -3312,6 +3681,11 @@ data_ma2_0 = data_chol %>% filter(ma2 == 0)
 data_ma2_1 = data_chol %>% filter(ma2 == 1)
 data_ma2_2 = data_chol %>% filter(ma2 == 2)
 
+
+data_groupe_1 = data_chol %>% filter(groupe == 1)
+data_groupe_2 = data_chol %>% filter(groupe == 2)
+data_groupe_3 = data_chol %>% filter(groupe == 3)
+data_groupe_4 = data_chol %>% filter(groupe == 4)
 ```
 
 ```{r,echo=FALSE}
@@ -4140,6 +4514,275 @@ glm_m(y,t,data_mamci_1)
 
 
 
+### Par groupe de diagnostic (MA/MCI/MCI autres/Autres) {.tabset}
+
+```{r,echo=FALSE}
+g = "groupe"
+```
+
+
+#### cholesterol_total {.tabset}
+
+```{r,echo=FALSE}
+a = "cholesterol_total"
+```
+
+##### G all
+
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_chol)) 
+```
+
+###### Modèle de base
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_chol)
+
+```
+
+###### ajusté sur G
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3")
+
+glm_m(y,t,data_chol)
+
+```
+
+###### Intéraction
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3",paste0(g,"*",a))
+
+glm_m(y,t,data_chol)
+
+```
+
+##### G 1
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_1)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_4)
+```
+
+#### cholesterol_hdl {.tabset}
+
+```{r,echo=FALSE}
+a = "cholesterol_hdl"
+```
+
+##### G all
+
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_chol)) 
+```
+
+###### Modèle de base
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_chol)
+
+```
+
+###### ajusté sur G
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3")
+
+glm_m(y,t,data_chol)
+
+```
+
+###### Intéraction
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3",paste0(g,"*",a))
+
+glm_m(y,t,data_chol)
+
+```
+
+##### G 1
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_1)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_4)
+```
+
+#### cholesterol_ldl {.tabset}
+
+```{r,echo=FALSE}
+a = "cholesterol_ldl"
+```
+
+##### G all
+
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_chol)) 
+```
+
+###### Modèle de base
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_chol)
+
+```
+
+###### ajusté sur G
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3")
+
+glm_m(y,t,data_chol)
+
+```
+
+###### Intéraction
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3",paste0(g,"*",a))
+
+glm_m(y,t,data_chol)
+
+```
+
+##### G 1
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_1)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+glm_m(y,t,data_groupe_4)
+```
+
+
 ## ptau en continue {.tabset}
 
 ### Modèle de base
@@ -4196,6 +4839,10 @@ data_ma2_0 = data_chol %>% filter(ma2 == 0)
 data_ma2_1 = data_chol %>% filter(ma2 == 1)
 data_ma2_2 = data_chol %>% filter(ma2 == 2)
 
+data_groupe_1 = data_chol %>% filter(groupe == 1)
+data_groupe_2 = data_chol %>% filter(groupe == 2)
+data_groupe_3 = data_chol %>% filter(groupe == 3)
+data_groupe_4 = data_chol %>% filter(groupe == 4)
 ```
 
 ```{r,echo=FALSE}
@@ -5024,4 +5671,273 @@ lm_m(y,t,data_mamci_1)
 
 
 
+
+
+### Par groupe de diagnostic (MA/MCI/MCI autres/Autres) {.tabset}
+
+```{r,echo=FALSE}
+g = "groupe"
+```
+
+
+#### cholesterol_total {.tabset}
+
+```{r,echo=FALSE}
+a = "cholesterol_total"
+```
+
+##### G all
+
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_chol)) 
+```
+
+###### Modèle de base
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### ajusté sur G
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### Intéraction
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3",paste0(g,"*",a))
+
+lm_m(y,t,data_chol)
+
+```
+
+##### G 1
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_1)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_4)
+```
+
+#### cholesterol_hdl {.tabset}
+
+```{r,echo=FALSE}
+a = "cholesterol_hdl"
+```
+
+##### G all
+
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_chol)) 
+```
+
+###### Modèle de base
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### ajusté sur G
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### Intéraction
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3",paste0(g,"*",a))
+
+lm_m(y,t,data_chol)
+
+```
+
+##### G 1
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_1)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_4)
+```
+
+#### cholesterol_ldl {.tabset}
+
+```{r,echo=FALSE}
+a = "cholesterol_ldl"
+```
+
+##### G all
+
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_chol)) 
+```
+
+###### Modèle de base
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### ajusté sur G
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3")
+
+lm_m(y,t,data_chol)
+
+```
+
+###### Intéraction
+```{r,echo=FALSE}
+
+t = c(a, g,"apoe.reg3",paste0(g,"*",a))
+
+lm_m(y,t,data_chol)
+
+```
+
+##### G 1
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_1)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_1)
+```
+
+##### G 2
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_2)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_2)
+```
+
+##### G 3
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_3)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_3)
+```
+
+##### G 4
+```{r,echo=FALSE}  
+paste0("N = ",nrow(data_groupe_4)) 
+```
+
+```{r,echo=FALSE}
+
+t = c(a,"apoe.reg3")
+
+lm_m(y,t,data_groupe_4)
+```
 
