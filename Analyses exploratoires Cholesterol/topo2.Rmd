@@ -289,7 +289,6 @@ lines(newdata$chol, ypred[, "upr"], lty = 2, col = "blue", lwd = 2)
 
 
 
-
 ## Cassure
 
 ### Modèle complet {.tabset}
@@ -787,11 +786,7 @@ cholesterol_total_range <- seq(min(data_chol_outlier_f$chol), max(data_chol_outl
 # Création du tableau de données pour les nouvelles observations
 data_chol_outlier_fictif <- expand.grid(chol = cholesterol_total_range,
                        abeta42 = NA,
-                  
-                       
-                       
-                       
-                      
+
                        imc_reg = "Corpulence normale",
                        sexe = "FALSE",
                        age_med = median(data_chol_outlier$age_med),
