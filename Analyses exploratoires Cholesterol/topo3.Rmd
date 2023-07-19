@@ -137,15 +137,48 @@ data_chol$groupe[data_chol$diagnostic_cli > 3] <- 0
 # Sous groupe
 
 ```{r,echo = FALSE}
+####################################################################################################################
+################################ Définir la variable pour le sous groupe ###########################################
+####################################################################################################################
 
-data_chol$g = data_chol$ma
+# Variable g à définir 
 
-print("Sous groupe : ma")
+g = "groupe"
+
+####################################################################################################################
+data_chol$g = as.factor(data_chol[,g])
+####################################################################################################################
+
+# Modalité de la variable
+
+m = "NA"
+
+# 2ème Modalité de la variable (optionnel => "NA" si null)
+
+mm = "NA"
+
+# 3ème Modalité de la variable (optionnel => "NA" si null)
+
+mmm = "NA"
+
+####################################################################################################################
+if(m != "NA"){data_chol = filter(data_chol,g == m | g == mm |g == mmm)}
+####################################################################################################################
 
 ```
+
 ```{r,echo = FALSE}
+
+paste0("Sous groupe : ", g)
+paste0("Modalité : ", m)
+if(mm != "NA"){
+  paste0("Modalité 2 : ", mm)
+}
+if(mmm != "NA"){
+  paste0("Modalité 3 : ", mmm)
+}
 y = "abeta42"
-data_chol$g = as.factor(data_chol$g)
+
 ```
 
 
@@ -158,8 +191,7 @@ data_chol$chol = as.numeric(data_chol$cholesterol_total)
 
 
 ```{r,echo=FALSE,warning=FALSE}
-data_chol = filter(data_chol, chol < 3.5,
-                   g == "1"
+data_chol = filter(data_chol, chol < 3.5
 )
 
 data_chol$chol2 = data_chol$chol^2
@@ -192,8 +224,7 @@ data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
                        apoe.reg2 = "0",
                        ch = "0",
                        dia = "0",
-                       hta_med = "0",
-                       g = "0"
+                       hta_med = "0"
                        )
 
 data_chol_fictif$chol2 = data_chol_fictif$chol^2
@@ -513,8 +544,12 @@ anova(m_seg, m_ln, test = "Chisq")
 ### Figure avec les 5 modélisations
 
 ```{r,echo=FALSE,warning=FALSE}
+
+predall = rbind(ypred1,ypred2,ypred3,ypred4,ypred5)[,1]
+
+
 # Crée un nouveau graphique sans tracé
-plot(data_chol$chol, data_chol$abeta42, type = "n", xlab = "cholesterol", ylab = "abeta42", main = "Figure avec les 5 modélisations",ylim = c(-1,1))
+plot(data_chol$chol, data_chol$abeta42, type = "n", xlab = "cholesterol", ylab = "abeta42", main = "Figure avec les 5 modélisations",ylim = c(min(predall),max(predall)))
 
 # Ajoute les lignes pour les modélisations
 lines(newdata$chol, ypred1[, "fit"], lty = 1, col = "red", lwd = 2)
@@ -580,8 +615,7 @@ data_chol$chol = as.numeric(data_chol$cholesterol_hdl)
 
 
 ```{r,echo=FALSE,warning=FALSE}
-data_chol = filter(data_chol, chol < 3.5,
-                   g == "1"
+data_chol = filter(data_chol, chol < 3.5
 )
 
 data_chol$chol2 = data_chol$chol^2
@@ -614,9 +648,7 @@ data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
                        apoe.reg2 = "0",
                        ch = "0",
                        dia = "0",
-                       hta_med = "0",
-                       g = "0"
-                       )
+                       hta_med = "0")
 
 data_chol_fictif$chol2 = data_chol_fictif$chol^2
 data_chol_fictif$chol3 = data_chol_fictif$chol^3
@@ -648,7 +680,7 @@ lines(newdata$chol, ypred1[, "upr"], lty = 2, col = "black", lwd = 2)
 k = 3
 
 
-data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
 
 # Création de la plage de valeurs pour chol
 cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
@@ -664,9 +696,7 @@ data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
                        apoe.reg2 = "0",
                        ch = "0",
                        dia = "0",
-                       hta_med = "0",
-                       g = "0"
-                       )
+                       hta_med = "0")
 
 data_chol_fictif$chol2 = data_chol_fictif$chol^2
 data_chol_fictif$chol3 = data_chol_fictif$chol^3
@@ -713,9 +743,7 @@ data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
                        apoe.reg2 = "0",
                        ch = "0",
                        dia = "0",
-                       hta_med = "0",
-                       g = "0"
-                       )
+                       hta_med = "0")
 
 data_chol_fictif$chol2 = data_chol_fictif$chol^2
 data_chol_fictif$chol3 = data_chol_fictif$chol^3
@@ -745,7 +773,7 @@ lines(newdata$chol, ypred3[, "upr"], lty = 2, col = "black", lwd = 2)
 k = 1
 
 
-data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
 
 # Création de la plage de valeurs pour chol
 cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
@@ -761,9 +789,7 @@ data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
                        apoe.reg2 = "0",
                        ch = "0",
                        dia = "0",
-                       hta_med = "0",
-                       g = "0"
-                       )
+                       hta_med = "0")
 
 data_chol_fictif$chol2 = data_chol_fictif$chol^2
 data_chol_fictif$chol3 = data_chol_fictif$chol^3
@@ -824,9 +850,7 @@ data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
                        apoe.reg2 = "0",
                        ch = "0",
                        dia = "0",
-                       hta_med = "0",
-                       g = "0"
-                       )
+                       hta_med = "0")
 
 
 data_chol_fictif$chol1 = ifelse(data_chol_fictif$chol <= k, data_chol_fictif$chol, k)
@@ -935,8 +959,11 @@ anova(m_seg, m_ln, test = "Chisq")
 ### Figure avec les 5 modélisations
 
 ```{r,echo=FALSE,warning=FALSE}
+predall = rbind(ypred1,ypred2,ypred3,ypred4,ypred5)[,1]
+
+
 # Crée un nouveau graphique sans tracé
-plot(data_chol$chol, data_chol$abeta42, type = "n", xlab = "cholesterol", ylab = "abeta42", main = "Figure avec les 5 modélisations",ylim = c(-1,1))
+plot(data_chol$chol, data_chol$abeta42, type = "n", xlab = "cholesterol", ylab = "abeta42", main = "Figure avec les 5 modélisations",ylim = c(min(predall),max(predall)))
 
 # Ajoute les lignes pour les modélisations
 lines(newdata$chol, ypred1[, "fit"], lty = 1, col = "red", lwd = 2)
@@ -1002,9 +1029,7 @@ data_chol$chol = as.numeric(data_chol$cholesterol_ldl)
 
 
 ```{r,echo=FALSE,warning=FALSE}
-data_chol = filter(data_chol, chol < 3.5,
-                   g == "1"
-)
+data_chol = filter(data_chol, chol < 3.5)
 
 data_chol$chol2 = data_chol$chol^2
 data_chol$chol3 = data_chol$chol^3
@@ -1357,8 +1382,11 @@ anova(m_seg, m_ln, test = "Chisq")
 ### Figure avec les 5 modélisations
 
 ```{r,echo=FALSE,warning=FALSE}
+predall = rbind(ypred1,ypred2,ypred3,ypred4,ypred5)[,1]
+
+
 # Crée un nouveau graphique sans tracé
-plot(data_chol$chol, data_chol$abeta42, type = "n", xlab = "cholesterol", ylab = "abeta42", main = "Figure avec les 5 modélisations",ylim = c(-1,1))
+plot(data_chol$chol, data_chol$abeta42, type = "n", xlab = "cholesterol", ylab = "abeta42", main = "Figure avec les 5 modélisations",ylim = c(min(predall),max(predall)))
 
 # Ajoute les lignes pour les modélisations
 lines(newdata$chol, ypred1[, "fit"], lty = 1, col = "red", lwd = 2)
