@@ -155,7 +155,7 @@ data_chol$at_inf23 = ifelse(data_chol$a == "+"  | data_chol$t == "+" | data_chol
 
 # Variable g à définir 
 
-g = "at_inf23"
+g = "ma"
 
 ####################################################################################################################
 data_chol$g = as.factor(data_chol[,g])
@@ -312,7 +312,7 @@ lines(newdata$chol, ypred2[, "upr"], lty = 2, col = "black", lwd = 2)
 ```
 
 
-### Quadritique
+### quadratique
 
 ```{r,echo=FALSE}
 k = 2
@@ -733,7 +733,7 @@ lines(newdata$chol, ypred2[, "upr"], lty = 2, col = "black", lwd = 2)
 ```
 
 
-### Quadritique
+### quadratique
 
 ```{r,echo=FALSE}
 k = 2
@@ -1150,7 +1150,7 @@ lines(newdata$chol, ypred2[, "upr"], lty = 2, col = "black", lwd = 2)
 ```
 
 
-### Quadritique
+### quadratique
 
 ```{r,echo=FALSE}
 k = 2
