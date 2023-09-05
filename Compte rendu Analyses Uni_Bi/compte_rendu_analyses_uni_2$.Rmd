@@ -785,7 +785,7 @@ trt_total = trt_total %>%
       mutate(x = tolower(x))%>% 
       filter(x != c(""))
 
-### Algo
+### Masque
 
 for (i in 1:nrow(trt_total)){
 	trt_total[i,1] = gsub("y","i", trt_total[i,1])
@@ -821,6 +821,7 @@ for (i in 1:nrow(trt_total)){
   }
 
 }
+
 
 medi_total = c(medi_chol,medi_diabete,medi_HTA,medi_antidouleur,medi_anxiete,medi_cv,medi_depression,medi_ma,medi_parkinson,medi_sommeil,medi_trouble,medi_vitamines)
 

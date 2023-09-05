@@ -153,6 +153,9 @@ data_chol$at_inf23 = ifelse(data_chol$a == "+"  | data_chol$t == "+" | data_chol
 ################################ Définir la variable pour le sous groupe ###########################################
 ####################################################################################################################
 
+y = "abeta42"
+
+
 # Variable g à définir 
 
 g = "ma"
@@ -181,6 +184,7 @@ if(m != "NA"){data_chol = filter(data_chol,g == m | g == mm |g == mmm)}
 
 ```{r,echo = FALSE}
 
+paste0("Marqueur : ", y)
 paste0("Sous groupe : ", g)
 paste0("Modalité : ", m)
 if(mm != "NA"){
@@ -189,7 +193,7 @@ if(mm != "NA"){
 if(mmm != "NA"){
   paste0("Modalité 3 : ", mmm)
 }
-y = "abeta42"
+
 
 ```
 

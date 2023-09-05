@@ -142,7 +142,7 @@ Trouver d'éventuelles associations en les marqueurs de la maladie d'Alzheimer e
 <br>
 Les valeurs du cholesterol sont standardisés  
 Les valeurs de l'Abeta42 en continues sont standardisées sur leur logarithme et multiplié par -1  
-Les valeurs de ptau en continues sont standardisées sur leur logarithme et multiplié par -1  
+Les valeurs de ptau en continues sont standardisées sur leur logarithme
 
 
 # Etude d'association
