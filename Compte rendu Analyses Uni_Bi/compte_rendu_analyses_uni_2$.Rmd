@@ -768,7 +768,7 @@ medi_sommeil = c("melatonin","mianserin","xanax","atarax","alprazolam","stilnox"
 
 ### Table médicament restant
 
-```{r}
+```{r,echo=FALSE}
 data2 = clean_names(data2)
 L = c("trt1","trt2","trt3","trt4","trt5","trt6","trt7","trt8","trt9","trt10",
 "trt11","trt12","trt13","trt14","trt15","trt16","trt17","trt18","trt19","trt20")
@@ -2587,6 +2587,11 @@ glm_reg = function(y,x,data){
 
 ```
 
+```{r,echo = FALSE}
+data2$presence_biomarqueur = 0
+data2 = data2 %>% mutate(presence_biomarqueur = replace(presence_biomarqueur,is.na(glucose_jeun) == F | is.na(cholesterol_total) == F | is.na(triglycerides) == F,1))
+```
+
 
 ## Abeta42 {.tabset}
 
@@ -3968,7 +3973,7 @@ tab <-
 tab
 ```
 
-```{r}
+```{r,echo=FALSE}
 # Export BDD avec scale variable
 
 "data_export = data.frame(abeta42_continu = data2$abeta42_,

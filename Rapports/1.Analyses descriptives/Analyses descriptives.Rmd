@@ -1,0 +1,4006 @@
+---
+title: "Visualisation Compte Rendu"
+author: "Geoffrey BOILAY"
+date: "`r format(Sys.time(),'%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    collapsed: false
+    smooth_scroll: false
+    toc_depth: '4'
+    df_print: paged
+  pdf_document:
+    toc: true
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Contexte
+
+Chaque enregistrement correpond à un patient qui a réalisé une ponction lombère (LCR).
+Une LCR n'étant pas réalisée pour des raisons mineurs, tous les patients de la BDD ont présentés des problèmes cognitifs.
+
+# Objectif
+
+L'objectif de l'étude est d'analyser l’association entre différents biomarqueurs sanguins et les protéines Abeta et tau, marqueurs de la maladie d’Alzheimer. 
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+#Importation
+data = read.csv2("//172.27.137.244/g_boilay/alternance/table/Masque_LCR_Novembre 2022.csv")
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+#Library
+
+library(tidyverse)
+library(dplyr)
+library(stringr)
+library(janitor)
+library(corrplot)
+library(BBmisc)
+library(lubridate)
+library(arsenal)
+library(ggfortify)
+library(lmtest)
+library(questionr)
+library(broom)
+library(broom.helpers)
+library(ggeffects)
+library(jtools)
+library("writexl")
+library(gtsummary)
+library(gt)
+library(ggcorrplot)
+```
+
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+## Formatage du type des variables
+
+for (i in 1:length(data)){
+  
+  if(grepl(paste(substr(unlist(tolower(as.character(data[10,i]))),1,1),collapse=" "),str_c(letters,collapse = "")) == T){
+    data[,i] = as.character(data[,i])
+  }else if(grepl(paste(substr(unlist(strsplit(tolower(as.character(data[10,i]))," ")),3,3),collapse=" "),str_c("/",collapse = "")) == T & str_length(as.character(data[10,i])) >= 3){
+    data[,i] = as.Date(data[,i],format = "%d/%m/%Y")
+  }else if(grepl(paste(substr(unlist(strsplit(tolower(as.character(data[10,i]))," ")),1,1),collapse=" "),str_c("0123456789",collapse = "")) == T){
+    data[,i] = as.numeric(as.character(data[,i]))
+  }
+  
+}
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+## Nom des variables en minuscules
+data = clean_names(data)
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Récupération et suppression des enregistrements datant d'avant 2008
+
+#Nous retirons de la base de données les enregistrements qui datent d'avant 2008 car nous n'avons #pas les références de mesures pour les variables d'études pour les enregistrement datant d'avant #cette date.
+
+ldel = c()
+j = 1
+for (i in 1:nrow(data)){
+  if (data$datepl[i] < as.Date("01/01/2008",format = "%d/%m/%Y")){
+    ldel[j] = i
+    j = j + 1
+  }
+
+}
+length(ldel)
+data2 = data[-ldel,]
+
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Ajustement de la variable "pays_naiss"
+
+#Après relecture des modalités de la variable des pays de naissance, on peut remarquer qu'il y a #plusieurs modalités qui représentent le même pays. Les modalités aberrantes ont été relevées #manuellement afin d'être supprimées avec le code ci-dessous 
+
+
+#Liste des modalités de pays à ajuster
+
+data2$pays_naiss = tolower(data2$pays_naiss)
+
+
+#Ajustement des modalités des pays
+
+data2$pays_naiss <- fct_recode(
+    data2$pays_naiss,
+    "algérie" = "algerie",
+    "algérie" = "algã©rie",
+    "algérie" = "alegerie",
+    "cambodge" = "cambodia",
+    "cap-vert" = "cap Vert",
+    "congo" = "congo brazzaville",
+    "congo" = "rd congo",
+    "madagascar" = "madascar",
+    "portugal" = "portugual",
+    "maroc" = "marroc",
+    "royaume-uni" = "royaume uni",   
+    
+)
+
+levels(data2$pays_naiss)
+
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Variables avec un problème de Modalités
+
+### Liste des variables qualitatives avec un problème de caractères dû à l'importation du fichier
+
+#Les variables avec un problème de modalités sont relevées manuellement et listées dans la #variable ci-dessous.
+
+tr = c("trt1","trt2","trt3","trt4","trt5","trt6","trt7","trt8","trt9","trt10",
+"trt11","trt12","trt13","trt14","trt15","trt16","trt17","trt18","trt19","trt20",
+"prec_diagnostic")
+
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+### Récupération des numéros des variables de la liste tr
+ltr = c()
+k = 1
+for (i in 1 : length(data2)){
+	for (j in 1 : length(tr)){
+		if (colnames(data2[i]) == tr[j]){
+			ltr[k] = i
+			k = k + 1
+		}
+	}
+}
+ltr
+```
+
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+### Remplacement des erreurs de caractères
+
+for (i in ltr){
+	for(j in nrow(data2)){
+		data2[j,i] = gsub("Ã©","é", data2[j,i])
+	}
+}
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Modalités de la variable nbre_enfant
+
+#Sur certains enregistrements, nous avons le nombre de garçons et/ou de fille mais pas le nombre #d'enfants.
+#Nous nous basons sur les variables nbre_fille et nbre_garcon pour completer la variable #nbre_enfant lorque cette dernière est vide.
+
+
+#Liste des variables associés aux enfants
+
+enf = c("nbre_enfant","nbre_fille","nbre_garcon")
+
+#Récupération des numéros des variables de la liste "enf"
+
+lenf = c()
+k = 0
+
+for (i in 1 : length(data2)){
+	for (j in 1 : length(enf)){
+		if (colnames(data2[i]) == enf[j]){
+			k = k + 1
+			lenf[k] = i
+
+		}
+	}
+}
+
+
+#Remplissage des modalités vides dans "nbre_enfan"
+
+for (i in 1 : nrow(data2)){
+	if (is.na(data2[i,lenf[1]]) == T & (is.na(data2[i,lenf[2]]) == F | is.na(data2[i,lenf[3]]) == F)){
+		data2[i,lenf[1]] = (if(is.na(data2[i,lenf[2]]) == T){0}else{data2[i,lenf[2]]}) + (if(is.na(data2[i,lenf[3]]) == T){0}else{data2[i,lenf[3]]})
+	}
+}
+
+
+#Cohérence
+
+n = 0
+nv = 0
+
+for (i in 1 : nrow(data2)){
+  if(is.na(data2[i,lenf[1]]) == F){
+    n = n + 1
+    if(data2[i,lenf[1]] == (if(is.na(data2[i,lenf[2]]) == T){0}else{data2[i,lenf[2]]}) + (if(is.na(data2[i,lenf[3]]) == T){0}else{data2[i,lenf[3]]})){
+      nv = nv + 1
+    }
+  }
+}
+nv
+n
+```
+
+# Analyses des variables
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Fonction "pt.table"
+
+p.table  = function(d){
+  dat_test <- data.frame(x = d)
+  dat_test %>%
+    gather(value = "Modalités") %>%
+    group_by(Modalités) %>%
+    summarise(n = n()) %>%
+    mutate(total_n = sum(n),
+           freq = 100*(n/total_n)) %>%
+    mutate(n_freq = paste0(n, " (", round(freq, 2), "%)")) %>%
+    select(Modalités, n_freq)
+}
+
+## Fonction "p.table"
+
+p.table  = function(d){
+  dat_test <- data.frame(x = d)
+  t = dat_test %>%
+     filter(!is.na(d))%>%
+    gather(value = "Modalités") %>%
+    group_by(Modalités) %>%
+    summarise(n = n(),
+              na = sum(is.na(d))) %>%
+    mutate(total_n = sum(n),
+           freq = 100*(n/total_n)) %>%
+    mutate(n_freq = paste0(n, " (", round(freq, 2), "%)")) %>%
+    select(Modalités, n_freq)
+  
+  na = dat_test %>%
+     filter(is.na(d))%>%
+    gather(value = "Modalités") %>%
+    group_by(Modalités) %>%
+    summarise(n = n(),
+              na = sum(is.na(d))) %>%
+    mutate(total_n = nrow(dat_test),
+           freq = 100*(n/total_n)) %>%
+    mutate(n_freq = paste0(n, " (", round(freq, 2), "%)"),color = "red") %>%
+    select(Modalités, n_freq)
+  
+  tt = dat_test %>%
+    filter(!is.na(d))%>%
+    gather(value = "Modalités") %>%
+    summarise(n = n(),
+              na = sum(is.na(d))) %>%
+    mutate(total_n = nrow(dat_test),
+           freq = 100*(n/total_n)) %>%
+    mutate(Modalités = paste0("Total")) %>%
+    mutate(n_freq = paste0(n, " (", round(freq, 2), "%)"),color = "red") %>%
+    select(Modalités,n_freq)
+  
+  x = rbind(t,tt)
+  rbind(x,na)
+}
+
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+bar = function(d){
+  p = ggplot(data=data2, aes(x=d), fill = d) +
+    geom_bar( ) +
+    scale_fill_grey(start = 0.25, end = 0.75) +
+    theme(legend.position="none")
+  return(p)
+}
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Fonction "outlier_hampel"
+
+outlier_hampel = function(d){
+  k = 3
+  
+  binf <- median(d,na.rm = TRUE) - k * mad(d,na.rm = TRUE) 
+  bsup = median(d,na.rm = TRUE) + k * mad(d,na.rm = TRUE) 
+  
+  outlier <- which(d < binf | d > bsup)
+  
+  for (i in outlier){
+    d[i] = NA
+  }
+  return(d)
+}
+
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Fonction "summ" 
+
+summ = function(d){
+  d = as.numeric(d)
+  data2 %>%
+    summarise(n = n()) %>%
+    mutate(total_n = sum(n),
+           na = sum(is.na(d)),
+           freq = 100*(na/total_n)) %>%
+    dplyr:::summarise(
+    min = min(d, na.rm = TRUE),
+    first_quartile = round(quantile(d,0.25, na.rm = TRUE),2),
+    median = round(median(d, na.rm = TRUE),2),
+    mean = round(mean(d, na.rm = TRUE),2),
+    third_quartile = round(quantile(d,0.75, na.rm = TRUE),2),
+    max = max(d, na.rm = TRUE),
+    sd = round(sd(d, na.rm = TRUE),2),
+    na = paste0(na, " (", round(freq, 2), "%)") )
+}
+
+#summ(data2$glucose_jeun)
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+## Fonction "histo" 
+histo = function(d){
+  his = hist(d,
+             main =  paste("Histogramme de la variable"),
+             xlab = d)
+  return(his)
+}
+```
+
+## Dimension de la BDD
+
+```{r , echo = FALSE}
+paste0("Nombre d'observations : ",nrow(data2))
+paste0("Nombre de variables : ",ncol(data2))
+```
+
+
+
+## Variables socio-démographique
+
+### Age {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+age = year(data2$datepl) - year(data2$date_naiss)
+data2 = cbind(data2,age)
+summ(data2$age)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$age)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+histo(age)
+```
+
+
+
+### Sexe {.tabset}
+
+#### Distribution
+
+```{r, echo = FALSE}
+data2$sexe.reg[data2$sexe == 1] = "Homme"
+data2$sexe.reg[data2$sexe == 2] = "Femme"
+
+data2$sexe[data2$sexe == 1] = 0
+data2$sexe[data2$sexe == 2] = 1
+
+p.table(data2$sexe.reg)
+```
+
+
+### Niveau d'étude {.tabset}
+
+##### Légende
+
+1     =    non scolarisé  
+2     =    primaire sans diplôme  
+3     =    certificat d'études  
+4     =    secondaire (collège/CAP/brevet)  
+5     =    secondaire (BEP/lycée)  
+6     =    baccalauréat  
+7     =    études supérieures  
+8     =    non renseigné  
+
+#### Modalités normales
+
+```{r, echo = FALSE}
+p.table(data2$niveau_etude)
+```
+
+
+
+
+#### Recodage des Modalités
+
+```{r, echo = FALSE}
+data2$niveau_etude.reg[data2$niveau_etude == 1] = "niveau études mineurs"
+data2$niveau_etude.reg[data2$niveau_etude == 2] = "niveau études mineurs"
+data2$niveau_etude.reg[data2$niveau_etude == 3] = "niveau études mineurs"
+data2$niveau_etude.reg[data2$niveau_etude == 4] = "niveau études intermédiaires"
+data2$niveau_etude.reg[data2$niveau_etude == 5] = "niveau études intermédiaires"
+data2$niveau_etude.reg[data2$niveau_etude == 6] = "niveau études intermédiaires"
+data2$niveau_etude.reg[data2$niveau_etude == 7] = "études supérieurs"
+data2$niveau_etude.reg[data2$niveau_etude == 8] = NA
+
+p.table(data2$niveau_etude.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$niveau_etude.reg)
+```
+
+### Statut Marital {.tabset}
+
+#### Distribution
+
+```{r, echo = FALSE}
+data2$statut_marital.reg[data2$statut_marital == 1] = "Jamais marié"
+data2$statut_marital.reg[data2$statut_marital == 2] = "Marié / en couple"
+data2$statut_marital.reg[data2$statut_marital == 3] = "Veuf"
+data2$statut_marital.reg[data2$statut_marital == 4] = "Divorcé"
+
+p.table(data2$statut_marital.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+data2$statut_marital.reg <- fct_relevel(data2$statut_marital.reg,c("Jamais marié","Corpulence normale","Obésité modérée","Obésité morbide ou massive","Obésité sévère","Surpoids"))
+
+levels(data2$statut_marital.reg)
+bar(data2$statut_marital.reg)
+```
+
+### Nombre d'enfants {.tabset}
+
+
+#### Modalités normales
+```{r, echo = FALSE}
+p.table(data2$nbre_enfant)
+```
+
+#### Recodage des Modalités
+```{r, echo = FALSE}
+data2$nbre_enfant.reg[data2$nbre_enfant == 0] = "0"
+data2$nbre_enfant.reg[data2$nbre_enfant == 1] = "1"
+data2$nbre_enfant.reg[data2$nbre_enfant == 2] = "2"
+data2$nbre_enfant.reg[data2$nbre_enfant == 3] = "3"
+data2$nbre_enfant.reg[data2$nbre_enfant > 3] = "4 ou plus enfants"
+
+p.table(data2$nbre_enfant.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$nbre_enfant.reg)
+```
+
+
+
+
+
+
+### Mode de vie {.tabset}
+
+#### Distribution
+```{r , echo = FALSE}
+data2$mode_vie.reg[data2$mode_vie == 1] = "couple"
+data2$mode_vie.reg[data2$mode_vie == 2] = "seul famille"
+data2$mode_vie.reg[data2$mode_vie == 3] = "seul"
+data2$mode_vie.reg[data2$mode_vie == 4] = "couple famille"
+
+p.table(data2$mode_vie.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$mode_vie.reg)
+```
+
+
+## Comportement de santé
+### Tabac {.tabset}
+
+#### Distribution
+```{r , echo = FALSE}
+data2$tabac.reg[data2$tabac == 1] = "Non"
+data2$tabac.reg[data2$tabac == 2] = "Actif"
+data2$tabac.reg[data2$tabac == 3] = "severe"
+data2$tabac.reg[data2$tabac == 4] = "Occasionnelle"
+
+p.table(data2$tabac.reg)
+```
+
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$tabac)
+```
+
+
+
+
+
+### Alcool {.tabset}
+
+#### Distribution
+
+```{r , echo = FALSE}
+data2$alcool.reg[data2$alcool == 1] = "Jamais"
+data2$alcool.reg[data2$alcool == 2] = "Occasionnelle"
+data2$alcool.reg[data2$alcool == 3] = "Reguliere dans les limites OMS"
+data2$alcool.reg[data2$alcool == 4] = "Reguliere > aux limites OMS"
+
+p.table(data2$alcool.reg)
+```
+
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$alcool.reg)
+```
+
+
+
+
+## Variables de santé
+### IMC {.tabset}
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+imc = data2$poids / (data2$taille/100)^2
+
+data2 = cbind(data2,imc)
+```
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$imc)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$imc)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$imc)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+#Découpage de la variable imc
+
+data2$imc.reg[data2$imc >= 40] = "Obésité morbide ou massive"
+data2$imc.reg[data2$imc <= 40] = "Obésité sévère"
+data2$imc.reg[data2$imc <= 35] = "Obésité modérée"
+data2$imc.reg[data2$imc <= 30] = "Surpoids"
+data2$imc.reg[data2$imc <= 25] = "Corpulence normale"
+data2$imc.reg[data2$imc <= 18.5] = "Insuffisance pondérale"
+
+p.table(data2$imc.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+data2$imc.reg <- fct_relevel(data2$imc.reg,c("Insuffisance pondérale","Corpulence normale","Obésité modérée","Obésité morbide ou massive","Obésité sévère","Surpoids"))
+
+levels(data2$imc.reg)
+
+
+t = bar(data2$imc.reg)
+t + theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
+```
+
+
+### Fréquence Cardiaque {.tabset}
+
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$freq_cardiaque)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$freq_cardiaque)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$freq_cardiaque)
+```
+
+#### Distribution
+```{r , echo = FALSE}
+data2$freq_cardiaque.reg[data2$freq_cardiaque < 60]  = "Freq card basse"
+data2$freq_cardiaque.reg[data2$freq_cardiaque >= 60] = "Freq card normale"
+data2$freq_cardiaque.reg[data2$freq_cardiaque > 80]  = "Freq card haute"
+
+p.table(data2$freq_cardiaque.reg)
+```
+
+
+### Tension Artérielle Systolique {.tabset} 
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$tas)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$tas)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$tas)
+```
+
+
+
+### Tension Artérielle Diastolique {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$tad)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$tad)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$tad)
+```
+
+
+
+
+### Hyper Tension Artérielle {.tabset}
+
+#### Distribution
+```{r , echo = FALSE}
+data2$hta.reg[data2$hta == 2] = 0
+data2$hta.reg[data2$hta == 1] = 1
+
+p.table(data2$hta.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$hta.reg)
+```
+
+
+### Dyslipidemie {.tabset}
+
+#### Distribution
+```{r , echo = FALSE}
+data2$dyslipidemie.reg[data2$dyslipidemie == 2] = 0
+data2$dyslipidemie.reg[data2$dyslipidemie == 1] = 1
+
+p.table(data2$dyslipidemie.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$dyslipidemie.reg)
+``` 
+
+
+
+
+
+### Les traitements {.tabset}
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+#médicament contre le cholestérol
+
+medi_chol = c("atorvastatine","crestor", "pravastatin", "simvastatin","taor","vasten","zocor","lipantil")
+
+#médicament contre la HTA
+
+medi_HTA = c("aldactone","esidrex","fludex","hydrochlorothiazide","spironolactone","aldactazine","spironolactone","amlor","aprovel","amlodipin","lercan","ramipril","coversil","cotareg","triatec","lasilix","atenolol","coaprovel","isoptin","temerit")
+
+#médicament contre le diabete
+
+medi_diabete = c("glucofag","metformin","stagid","diamicron")
+
+#médicament contre la maladie d'Alzheimer
+
+medi_ma = c("donepezil","rivastigmin","risperdal","tanakan","exelon","rivastigminepatc
+")
+
+#médicament contre la maladie de Parkinson
+
+medi_parkinson = c("modopar","tanakan")
+
+#médicament contre les maladies cardiovasculaires
+  
+medi_cv = c("kardegic","plavix")
+
+#médicament contre la dépression
+
+medi_depression = c("seroplex","deroxat","paroxetin","prozac","efexor","lamictal","atimil","mianserin","fluoxetin","escitalopram","laroxil","sertralin","zoloft","seropram")
+
+#médicament contre les carences en vitamines
+
+medi_vitamines = c("uvedos","vitamin")
+
+#médicament contre l'anxiété
+
+medi_anxiete = c("seresta","imovan","lexomil","lisanxia","seroplex")
+
+#médicament anti douleur
+
+medi_antidouleur = c("dolipran","aspegic","paracetamol","aspirin","ixprim","dafalgan","tramadol","cortancyl")
+
+#médicament contre le trouble du comportement
+
+medi_trouble = c("depakot","lamictal")
+
+#médicament contre les troubles de sommeil
+
+medi_sommeil = c("melatonin","mianserin","xanax","atarax","alprazolam","stilnox","temesta","circadin")
+
+
+
+```
+
+### Table médicament restant
+
+```{r,echo=FALSE}
+data2 = clean_names(data2)
+L = c("trt1","trt2","trt3","trt4","trt5","trt6","trt7","trt8","trt9","trt10",
+"trt11","trt12","trt13","trt14","trt15","trt16","trt17","trt18","trt19","trt20")
+
+trt_total = data.frame(x = data2$trt1)
+
+for (i in 2:length(L)){
+  b = data.frame(x = data2[,L[i]])
+  
+  trt_total = rbind(trt_total,b)
+}
+
+trt_total = trt_total %>%
+      mutate(x = tolower(x))%>% 
+      filter(x != c(""))
+
+### Masque
+
+for (i in 1:nrow(trt_total)){
+	trt_total[i,1] = gsub("y","i", trt_total[i,1])
+	trt_total[i,1] = gsub("ll","l", trt_total[i,1])
+  trt_total[i,1] = gsub("ff","f", trt_total[i,1])
+  trt_total[i,1] = gsub("ph","f", trt_total[i,1])
+  trt_total[i,1] = gsub("h","", trt_total[i,1])
+  trt_total[i,1] = gsub("pp","p", trt_total[i,1])
+  
+  trt_total[i,1] = gsub(",","", trt_total[i,1])
+  trt_total[i,1] = gsub("_","", trt_total[i,1])
+  #trt_total[i,1] = gsub(".","", trt_total[i,1])
+  
+  trt_total[i,1] = gsub("0","", trt_total[i,1])
+  trt_total[i,1] = gsub("1","", trt_total[i,1])
+  trt_total[i,1] = gsub("2","", trt_total[i,1])
+  trt_total[i,1] = gsub("3","", trt_total[i,1])
+  trt_total[i,1] = gsub("4","", trt_total[i,1])
+  trt_total[i,1] = gsub("5","", trt_total[i,1])
+  trt_total[i,1] = gsub("6","", trt_total[i,1])
+  trt_total[i,1] = gsub("7","", trt_total[i,1])
+  trt_total[i,1] = gsub("8","", trt_total[i,1])
+  trt_total[i,1] = gsub("9","", trt_total[i,1])
+
+  if (length(grep(" ", trt_total[i,1], ignore.case = TRUE)) > 0){
+    pos = regexpr(pattern=" ",trt_total[i,1],fixed=TRUE)[1]
+    trt_total[i,1] = substr(trt_total[i,1],1,pos-1)
+}
+  trt_total[i,1] = gsub(" ","", trt_total[i,1])
+  
+  if(substr(trt_total[i,1],nchar(trt_total[i,1]),nchar(trt_total[i,1])) == "e"){
+    trt_total[i,1] = gsub('.{1}$', '', trt_total[i,1])
+  }
+
+}
+
+
+medi_total = c(medi_chol,medi_diabete,medi_HTA,medi_antidouleur,medi_anxiete,medi_cv,medi_depression,medi_ma,medi_parkinson,medi_sommeil,medi_trouble,medi_vitamines)
+
+trt_total = trt_total %>%
+      mutate(x = tolower(x))%>% 
+      filter(x != c(""),!x %in% medi_total)
+
+
+dat_test <- data.frame(x = trt_total)
+med_nb = dat_test %>%
+            mutate(x = tolower(x)) %>%
+            filter(dat_test != "",!x %in% medi_total)%>%
+            gather(value = "Modalités") %>%
+            group_by(Modalités) %>%
+            summarise(n = n()) %>% arrange(desc(n))    
+
+med_nb = as.data.frame(med_nb)
+
+med_nb
+
+#write_xlsx(med_nb,"//172.27.137.244/g_boilay/alternance/export/med.xlsx")
+#write.csv(med_nb,"//172.27.137.244/g_boilay/alternance/export/med.csv")
+```
+
+
+
+
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+
+ch = NA
+hta_med = NA
+dia = NA
+antidouleur = NA
+anxiete = NA
+cv = NA
+depression = NA
+alzheimer = NA
+parkinson = NA
+sommeil = NA
+trouble = NA
+vitamines = NA
+Lm = list(medi_chol,medi_diabete,medi_HTA,medi_antidouleur,medi_anxiete,medi_cv,medi_depression,medi_ma,medi_parkinson,medi_sommeil,medi_trouble,medi_vitamines)
+
+for (k in 1:length(Lm)){
+  for (i in 1:length(L)){
+    for (j in 1:nrow(data2)){
+      for (l in 1:length(Lm[[k]])){
+        if (grepl(tolower(Lm[[k]][l]),tolower(data2[j,L[i]])) == T & is.na(data[j,L[i]]) == FALSE){
+          if (k == 1){
+            ch[j] = 1
+          }else if (k == 2){
+            dia[j] = 1           
+          }else if (k == 3){
+            hta_med[j] = 1           
+          }else if (k == 4){
+            antidouleur[j] = 1           
+          }else if (k == 5){
+            anxiete[j] = 1           
+          }else if (k == 6){
+            cv[j] = 1           
+          }else if (k == 7){
+            depression[j] = 1           
+          }else if (k == 8){
+            alzheimer[j] = 1           
+          }else if (k == 9){
+            parkinson[j] = 1           
+          }else if (k == 10){
+            sommeil[j] = 1           
+          }else if (k == 11){
+            trouble[j] = 1           
+          }else if (k == 12){
+            vitamines[j] = 1
+          }
+        }
+      }
+    }
+  }
+}
+
+for(i in 1:nrow(data2)){
+  if (is.na(ch[i]) == T){ch[i] = 0}
+  if (is.na(dia[i]) == T){dia[i] = 0}
+  if (is.na(hta_med[i]) == T){hta_med[i] = 0}
+  if (is.na(antidouleur[i]) == T){antidouleur[i] = 0}
+  if (is.na(anxiete[i]) == T){anxiete[i] = 0}
+  if (is.na(cv[i]) == T){cv[i] = 0}
+  if (is.na(depression[i]) == T){depression[i] = 0}
+  if (is.na(alzheimer[i]) == T){alzheimer[i] = 0}
+  if (is.na(parkinson[i]) == T){parkinson[i] = 0}
+  if (is.na(sommeil[i]) == T){sommeil[i] = 0}
+  if (is.na(trouble[i]) == T){trouble[i] = 0}
+  if (is.na(vitamines[i]) == T){vitamines[i] = 0}
+}
+
+
+data2 = cbind(data2,ch,hta_med,dia,antidouleur,anxiete,cv,depression,alzheimer,parkinson,sommeil,trouble,vitamines)
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+dat_test <- data.frame(
+  chol = data2$ch,
+  hta_med = data2$hta_med,
+  dia = data2$dia,
+  antidouleur = data2$antidouleur,
+  anxiete = data2$anxiete,
+  cv = data2$cv,
+  depression = data2$depression,
+  alzheimer = data2$alzheimer,
+  parkinson = data2$parkinson,
+  sommeil = data2$sommeil,
+  trouble = data2$trouble,
+  vitamines = data2$vitamines
+  )
+dat_test %>%
+  gather(key = "Médicaments", value = "Modalités") %>%
+  group_by(Médicaments, Modalités) %>%
+  summarise(n = n()) %>%
+  group_by(Médicaments) %>%
+  mutate(total_n = sum(n),
+         freq = 100*(n/total_n)) %>%
+  mutate(n_freq = paste0(n, " (", round(freq, 2), "%)")) %>%
+  select(Médicaments, Modalités, n_freq)
+```
+## MMSE {.tabset}
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, results = FALSE}
+L = c("date_mms1","date_mms2","date_mms3","date_mms4","date_mms5",
+      "date_mms6","date_mms7","date_mms8","date_mms9","date_mms10",
+      "date_mms11","date_mms12","date_mms13","date_mms14","date_mms15",
+      "date_mms16","date_mms17","date_mms18","date_mms19","date_mms20"
+      )
+
+for (i in 1:nrow(data2)){
+  for (j in 1:length(L)){
+    if(is.na(data2[i,paste0("score_mms",j)]) == TRUE){
+      data2[i,L[j]] = NA
+    }
+  }
+}
+
+mmse = 0
+mmse_last = 0
+mmse_diff = 0
+mmse_avant_pl = 0
+mmse_apres_pl = 0
+
+for (i in 1:nrow(data2)){
+  li = c()
+    for (j in 1:length(L)){
+      li[j] = difftime(as.Date(data2[i,L[j]],format = "%d/%m/%Y"),data2$datepl[i],units = "days")
+      
+    }
+  if (sum(is.na(li)) < 20){
+    mmse[i] = data2[i,paste0("score_mms",which.min(abs(li)))]
+  
+  cond <- sapply(li, function(x) is.na(x) == F)
+  li = li[cond]
+  
+  mx = which.max(li)
+  mn = which.min(li)
+  
+  mmse_last[i] = li[mx]
+  mmse_diff[i] = abs(li[mn]) + abs(li[mx])
+  
+  inf <- sapply(li, function(x) x < 0)
+  mmse_avant_pl[i] = length(li[inf])
+  
+  
+  sup <- sapply(li, function(x) x > 0)
+  mmse_apres_pl[i] = length(li[sup])
+  }
+}
+
+#data2 = cbind(data2,mmse,mmse_last,mmse_diff,mmse_avant_pl,mmse_apres_pl)
+data2 = cbind(data2,mmse,mmse_last,mmse_diff,mmse_avant_pl,mmse_apres_pl)
+```
+
+
+### Score MMSE le plus proche de la PL {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$mmse)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$mmse)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$mmse)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$mmse.reg[data2$mmse >= 27] = "Nul"
+data2$mmse.reg[data2$mmse <= 26] = "Léger"
+data2$mmse.reg[data2$mmse <= 20] = "Modéré"
+data2$mmse.reg[data2$mmse <= 10] = "Sévère"
+
+p.table(data2$mmse.reg)
+```
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$mmse.reg)
+```
+
+
+
+
+
+
+
+### Dernier Score MMSE réalisé (en j) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$mmse_last)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$mmse_last)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$mmse_last)
+```
+
+
+### Différence entre le premier et dernier Score MMSE (en j) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$mmse_diff)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$mmse_diff)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$mmse_diff)
+```
+
+### Nombre de Score MMSE avant la PL {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$mmse_avant_pl)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$mmse_avant_pl)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$mmse_avant_pl)
+```
+
+
+### Nombre de Score MMSE après la PL {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$mmse_apres_pl)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$mmse_apres_pl)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$mmse_apres_pl)
+```
+
+
+
+
+## APOE {.tabset}
+
+### Distribution
+```{r,echo = FALSE}
+data2$apoe.reg[data2$apoe == 1] = "E3/E3"
+data2$apoe.reg[data2$apoe == 2] = "Présence E4"
+data2$apoe.reg[data2$apoe == 3] = "E4/E4"
+data2$apoe.reg[data2$apoe == 4] = "E2/E3, E2/E2"
+data2$apoe.reg[data2$apoe == 5] = "Présence E4"
+data2$apoe.reg[data2$apoe == 6] = "E2/E3, E2/E2"
+
+p.table(data2$apoe.reg)
+```
+### Distribution présence E4
+```{r,echo = FALSE}
+data2$apoe.reg2[data2$apoe == 1] = 0
+data2$apoe.reg2[data2$apoe == 2] = 1
+data2$apoe.reg2[data2$apoe == 3] = 2
+data2$apoe.reg2[data2$apoe == 4] = 0
+data2$apoe.reg2[data2$apoe == 5] = 1
+data2$apoe.reg2[data2$apoe == 6] = 0
+
+p.table(data2$apoe.reg2)
+```
+
+### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$apoe.reg)
+```
+
+
+
+
+
+## Diagnostique clinique {.tabset}
+
+#### Légende
+
+1 = MA  
+2 = MCI amnésique  
+3 = MCI autre  
+4= Démence mixte  
+5 = Démence vasculaire  
+6 = DFT  
+7 = Lewy  
+8 = Atrophie corticale postérieure  
+9 = Démence alcoolique  
+10 = Aphasie progressive primaire  
+11 = Trouble psychiatrique   
+12 = VIH   
+13 = NSP  
+14 = Autre  
+
+```{r, echo = FALSE}
+data2$ma <- ifelse(data2$diagnostic_cli == 1, 1, 0)
+data2$mci <- ifelse(data2$diagnostic_cli == 2, 1, 0)
+data2$ma_mci <- ifelse(data2$diagnostic_cli == 1 |data2$diagnostic_cli == 2 , 1, 0)
+```
+
+
+### Distribution
+```{r, echo = FALSE}
+p.table(data2$diagnostic_cli)
+```
+### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$diagnostic_cli)
+```
+
+
+
+
+
+## Biomarqueur de la MA
+### Abeta42 {.tabset}
+
+#### Distribution
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+
+data2$ab42_ab40 = FALSE
+
+data2$ab42_ab40 = data2$abeta42/as.numeric(data2$abeta40)
+
+abeta42t = c()
+
+
+for (i in 1:nrow(data2)){
+  
+   if (between(data2$datepl[i],as.Date("01/01/2008", format = "%d/%m/%Y") ,as.Date("05/12/2012",format = "%d/%m/%Y",)) & data2$abeta42[i] > 500 & is.na(data2$abeta42[i]) == FALSE){
+    abeta42t[i] = "abeta42 normal"
+
+    
+  }else if (between(data2$datepl[i],as.Date("05/12/2012", format = "%d/%m/%Y"),as.Date("20/05/2016",format = "%d/%m/%Y",)) & data2$abeta42[i] > 815 & is.na(data2$abeta42[i]) == FALSE){
+    abeta42t[i] = "abeta42 normal"
+
+    
+  }else if (between(data2$datepl[i],as.Date("20/05/2016", format = "%d/%m/%Y"),as.Date("24/05/2018",format = "%d/%m/%Y",)) & data2$abeta42[i] > 730 & is.na(data2$abeta42[i]) == FALSE){
+    abeta42t[i] = "abeta42 normal"
+  
+    
+  }else if (data2$datepl[i] >= as.Date("24/05/2018",format = "%d/%m/%Y") & data2$abeta42[i] > 860 & is.na(data2$abeta42[i]) == FALSE){
+      abeta42t[i] = "abeta42 normal"
+
+      
+  }else{
+    abeta42t[i] = "abeta42 faible"
+ 
+    
+  }
+}
+
+data2 = cbind(data2,abeta42t)
+```
+
+
+```{r,echo = FALSE}
+p.table(data2$abeta42t)
+```
+
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$abeta42t)
+```
+
+#### Standardisation
+
+Standardisation du logarithme de la variable multipliée par -1 en prenant en compte les différentes périodes
+
+```{r,echo = FALSE}
+
+date_interval = matrix(nrow = nrow(data2))
+data2 = cbind(data2,date_interval)
+data2$date_interval = 0
+
+data2 = data2 %>%
+  mutate(date_interval = replace(date_interval,datepl > as.Date("24/05/2008",format = "%d/%m/%Y") & datepl <= as.Date("05/12/2012",format = "%d/%m/%Y"),1)) %>%
+  mutate(date_interval = replace(date_interval,datepl > as.Date("05/12/2012",format = "%d/%m/%Y") & datepl <= as.Date("20/05/2016",format = "%d/%m/%Y"),2)) %>%
+  mutate(date_interval = replace(date_interval,datepl > as.Date("20/05/2016",format = "%d/%m/%Y") & datepl <= as.Date("24/05/2018",format = "%d/%m/%Y"),3)) %>%
+  mutate(date_interval = replace(date_interval,datepl > as.Date("24/05/2018",format = "%d/%m/%Y"),4))
+
+
+
+data2 = data2 %>% group_by(date_interval) %>% mutate(abeta42 = scale(log(abeta42))*-1) %>% ungroup()
+
+summ(data2$abeta42)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$abeta42)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$abeta42)
+```
+
+
+### Abeta40 {.tabset}
+
+#### Distribution
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+data2$abeta40t <- 0
+
+  data2 = data2 %>%
+  mutate(abeta40t = replace(abeta40t,datepl > as.Date("24/05/2008",format = "%d/%m/%Y") & datepl <= as.Date("05/12/2012",format = "%d/%m/%Y") & ab42_ab40 > 0.071,1)) %>%
+  mutate(abeta40t = replace(abeta40t,datepl > as.Date("05/12/2012",format = "%d/%m/%Y") & datepl <= as.Date("20/05/2016",format = "%d/%m/%Y") & ab42_ab40 > 0.065,1)) %>%
+  mutate(abeta40t = replace(abeta40t,datepl > as.Date("20/05/2016",format = "%d/%m/%Y") & datepl <= as.Date("24/05/2018",format = "%d/%m/%Y") & ab42_ab40 > 0.083 ,1)) %>%
+  mutate(abeta40t = replace(abeta40t,datepl > as.Date("24/05/2018",format = "%d/%m/%Y") & ab42_ab40 > 0.083 , 1))
+
+
+#test = data2 %>% filter(datepl > as.Date("24/05/2008",format = "%d/%m/%Y") & datepl <= as.Date("05/12/2012",format = "%d/%m/%Y")) %>% select()
+  
+p.table(data2$abeta40t)
+summ(data2$ab42_ab40)
+
+```
+
+
+```{r,echo = FALSE}
+p.table(data2$abeta42t)
+```
+
+
+
+
+#### Standardisation
+
+Standardisation du logarithme de la variable multipliée par -1 en prenant en compte les différentes périodes
+
+```{r,echo = FALSE}
+data2 = data2 %>% group_by(date_interval) %>% mutate(abeta40 = scale(log(ab42_ab40))*-1) %>% ungroup()
+
+summ(data2$abeta40)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$abeta40)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$abeta40)
+```
+
+
+### Tau {.tabset}
+
+#### Distribution
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+taut = c()
+
+
+for (i in 1:nrow(data2)){
+  
+  
+   if (between(data2$datepl[i],as.Date("01/01/2008", format = "%d/%m/%Y"),as.Date("05/12/2012",format = "%d/%m/%Y",)) & data2$tau[i] > 300 & is.na(data2$tau[i]) == FALSE){
+    taut[i] = "tau elevé"
+
+     
+  }else if (between(data2$datepl[i],as.Date("05/12/2012", format = "%d/%m/%Y"),as.Date("20/05/2016",format = "%d/%m/%Y",)) & data2$tau[i] > 300 & is.na(data2$tau[i]) == FALSE){
+    taut[i] = "tau elevé"
+
+      
+  }else if (between(data2$datepl[i],as.Date("20/05/2016", format = "%d/%m/%Y"),as.Date("24/05/2018",format = "%d/%m/%Y",)) & data2$tau[i] > 340 & is.na(data2$tau[i]) == FALSE){
+    taut[i] = "tau elevé"
+
+    
+  }else if (data2$datepl[i] >= as.Date("24/05/2018",format = "%d/%m/%Y") & data2$tau[i] > 225 & is.na(data2$tau[i]) == FALSE){
+      taut[i] = "tau elevé"
+
+      
+  }else{
+    taut[i] = "tau normal"
+  }
+}
+
+data2 = cbind(data2,taut)
+```
+
+```{r,echo = FALSE}
+p.table(data2$taut)
+```
+
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$taut)
+```
+
+#### Standardisation
+
+Standardisation du logarithme de la variable en prenant en compte les différentes périodes
+
+```{r,echo = FALSE}
+data2 = data2 %>% group_by(date_interval) %>% mutate(tau = scale(log(tau))) %>% ungroup()
+summ(data2$tau)
+```
+
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$tau)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$tau)
+```
+
+
+
+### Ptau {.tabset}
+
+#### Distribution
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+attach(data2)
+```
+
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+ptaut = c()
+
+
+for (i in 1:nrow(data2)){
+  
+  
+   if (between(data2$datepl[i],as.Date("01/01/2008", format = "%d/%m/%Y"),as.Date("05/12/2012",format = "%d/%m/%Y",)) & data2$ptau[i] > 65 & is.na(data2$ptau[i]) == FALSE){
+    ptaut[i] = "ptau elevé"
+
+     
+  }else if (between(data2$datepl[i],as.Date("05/12/2012", format = "%d/%m/%Y"),as.Date("20/05/2016",format = "%d/%m/%Y",)) & data2$ptau[i] > 58 & is.na(data2$ptau[i]) == FALSE){
+    ptaut[i] = "ptau elevé"
+
+      
+  }else if (between(data2$datepl[i],as.Date("20/05/2016", format = "%d/%m/%Y"),as.Date("24/05/2018",format = "%d/%m/%Y",)) & data2$ptau[i] > 58 & is.na(data2$ptau[i]) == FALSE){
+    ptaut[i] = "ptau elevé"
+
+    
+  }else if (data2$datepl[i] >= as.Date("24/05/2018",format = "%d/%m/%Y") & data2$ptau[i] > 22 & is.na(data2$ptau[i]) == FALSE){
+      ptaut[i] = "ptau elevé"
+
+      
+  }else{
+    ptaut[i] = "ptau normal"
+  }
+}
+
+data2 = cbind(data2,ptaut)
+```
+
+```{r,echo = FALSE}
+p.table(data2$ptaut)
+```
+
+#### Barplot
+
+```{r,echo=FALSE, warning = FALSE}
+bar(data2$ptaut)
+```
+
+#### Standardisation
+
+Standardisation du logarithme de la variable en prenant en compte les différentes périodes
+
+```{r,echo = FALSE}
+data2 = data2 %>% group_by(date_interval) %>% mutate(ptau = scale(log(ptau))) %>% ungroup()
+
+summ(data2$ptau)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$ptau)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$ptau)
+```
+
+
+
+
+
+### Corrélation {.tabset}
+
+
+#### Pearson
+
+```{r,echo=FALSE}
+data_biomarqueurs_pearson = data2 %>%
+  select (abeta42,abeta40,tau,ptau, age, apoe.reg2) %>% 
+  na.omit()
+
+data_biomarqueurs_pearson <- data_biomarqueurs_pearson %>% rename("Abeta42" = abeta42, 
+                                                  "Abeta40" = abeta40,
+                                              "Tau" = tau,
+                                              "Ptau" = ptau,
+                                              "Age" = age,
+                                              "NB allèle E4" = apoe.reg2)
+
+Columns=sapply(data_biomarqueurs_pearson,is.numeric)
+Correl=cor(data_biomarqueurs_pearson[,Columns], method = "pearson")
+
+ggcorrplot(Correl,type = "lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+#### Spearman
+
+```{r,echo=FALSE}
+data_biomarqueurs_spearman = data2 %>%
+  select (abeta42,abeta40,tau,ptau, age, apoe.reg2) %>% 
+  na.omit()
+
+data_biomarqueurs_spearman <- data_biomarqueurs_spearman %>% rename("Abeta42" = abeta42, 
+                                                  "Abeta40" = abeta40,
+                                              "Tau" = tau,
+                                              "Ptau" = ptau,
+                                              "Age" = age,
+                                              "NB allèle E4" = apoe.reg2)
+
+Columns=sapply(data_biomarqueurs_spearman,is.numeric)
+Correl=cor(data_biomarqueurs_spearman[,Columns], method = "spearman")
+
+ggcorrplot(Correl, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+
+
+
+
+
+## Biomarqueur sanguin
+### Cholesterol Total (g/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$cholesterol_total)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$cholesterol_total)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$cholesterol_total)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$cholesterol_total.reg[data2$cholesterol_total <= 2] = "Cholestérol total normal"
+data2$cholesterol_total.reg[data2$cholesterol_total > 2] = "Cholestérol total élevé"
+
+p.table(data2$cholesterol_total.reg)
+```
+
+
+
+
+
+### Cholesterol hdl (g/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$cholesterol_hdl)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$cholesterol_hdl)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$cholesterol_hdl)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$cholesterol_hdl.reg[data2$cholesterol_hdl < 0.4] = "cholesterol_hdl faible"
+data2$cholesterol_hdl.reg[data2$cholesterol_hdl >= 0.4] = "cholesterol_hdl normal"
+data2$cholesterol_hdl.reg[data2$cholesterol_hdl > 0.6] = "cholesterol_hdl élevé"
+
+p.table(data2$cholesterol_hdl.reg)
+```
+
+### Cholesterol ldl (g/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+summ(data2$cholesterol_ldl)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$cholesterol_ldl)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$cholesterol_ldl)
+```
+
+
+### Glucose à jeun (mmol/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+
+summ(data2$glucose_jeun)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$glucose_jeun)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$glucose_jeun)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$glucose_jeun.reg[data2$glucose_jeun <= 3.9] = "Hypoglycémie"
+data2$glucose_jeun.reg[data2$glucose_jeun > 3.9] = "glycémie normale"
+data2$glucose_jeun.reg[data2$glucose_jeun > 6.1] = "Hyperglycémie"
+
+p.table(data2$glucose_jeun.reg)
+```
+
+
+### Triglycerides (g/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+data2$triglycerides = outlier_hampel(data2$triglycerides)
+summ(data2$triglycerides)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$triglycerides)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$triglycerides)
+```
+
+
+### Corrélation {.tabset}
+
+#### Biomarqueur sanguin + age {.tabset}
+
+
+##### Pearson
+
+```{r,echo=FALSE}
+data_bio_sanguin_age_pearson = data2 %>%
+  select (cholesterol_total,cholesterol_hdl,cholesterol_ldl,glucose_jeun, triglycerides, age) %>% 
+  na.omit()
+
+data_bio_sanguin_age_pearson <- data_bio_sanguin_age_pearson %>% rename("Cholesterol total" = cholesterol_total, 
+                                                  "Cholesterol hdl" = cholesterol_hdl,
+                                                  "Cholesterol ldl" = cholesterol_ldl,
+                                                  "Glucose" = glucose_jeun,
+                                                  "Triglycérides" = triglycerides,
+                                                  "Age" = age)
+
+Columns=sapply(data_bio_sanguin_age_pearson,is.numeric)
+Correl=cor(data_bio_sanguin_age_pearson[,Columns], method = "pearson")
+
+ggcorrplot(Correl,hc.order=TRUE, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+##### Spearman
+
+```{r,echo=FALSE}
+data_bio_sanguin_age_spearman = data2 %>%
+  select (cholesterol_total,cholesterol_hdl,cholesterol_ldl,glucose_jeun, triglycerides, age) %>% 
+  na.omit()
+
+data_bio_sanguin_age_spearman <- data_bio_sanguin_age_spearman %>% rename("Cholesterol total" = cholesterol_total, 
+                                                  "Cholesterol hdl" = cholesterol_hdl,
+                                                  "Cholesterol ldl" = cholesterol_ldl,
+                                                  "Glucose" = glucose_jeun,
+                                                  "Triglycérides" = triglycerides,
+                                                  "Age" = age)
+
+Columns=sapply(data_bio_sanguin_age_spearman,is.numeric)
+Correl=cor(data_bio_sanguin_age_spearman[,Columns], method = "spearman")
+
+ggcorrplot(Correl, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+#### Biomarqueur sanguin + mmse + apoe {.tabset}
+
+##### Pearson
+
+```{r,echo=FALSE}
+data_bio_sanguin_mmse_pearson = data2 %>%
+  select (cholesterol_total,cholesterol_hdl,cholesterol_ldl,glucose_jeun, triglycerides, mmse,apoe.reg2) %>% 
+  na.omit()
+
+data_bio_sanguin_mmse_pearson <- data_bio_sanguin_mmse_pearson %>% rename("Cholesterol total" = cholesterol_total, 
+                                                  "Cholesterol hdl" = cholesterol_hdl,
+                                                  "Cholesterol ldl" = cholesterol_ldl,
+                                                  "Glucose" = glucose_jeun,
+                                                  "Triglycérides" = triglycerides,
+                                                  "MMSE" = mmse,
+                                                  "NB E4" = apoe.reg2)
+
+Columns=sapply(data_bio_sanguin_mmse_pearson,is.numeric)
+Correl=cor(data_bio_sanguin_mmse_pearson[,Columns], method = "pearson")
+
+ggcorrplot(Correl,hc.order=TRUE, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+##### Spearman
+
+```{r,echo=FALSE}
+data_bio_sanguin_mmse_spearman = data2 %>%
+  select (cholesterol_total,cholesterol_hdl,cholesterol_ldl,glucose_jeun, triglycerides, mmse,apoe.reg2) %>% 
+  na.omit()
+
+data_bio_sanguin_mmse_spearman <- data_bio_sanguin_mmse_spearman %>% rename("Cholesterol total" = cholesterol_total, 
+                                                  "Cholesterol hdl" = cholesterol_hdl,
+                                                  "Cholesterol ldl" = cholesterol_ldl,
+                                                  "Glucose" = glucose_jeun,
+                                                  "Triglycérides" = triglycerides,
+                                                  "MMSE" = mmse,
+                                                  "NB E4" = apoe.reg2)
+
+Columns=sapply(data_bio_sanguin_mmse_spearman,is.numeric)
+Correl=cor(data_bio_sanguin_mmse_spearman[,Columns], method = "spearman")
+
+ggcorrplot(Correl, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+
+#### Biomarqueur sanguin + Biomarqueur de la MA  {.tabset}
+
+
+##### Pearson
+
+
+```{r,echo=FALSE}
+data_bio_sanguin_ma_pearson = data2 %>%
+  select (cholesterol_total,cholesterol_hdl,cholesterol_ldl,glucose_jeun, triglycerides, abeta42,abeta40,tau,ptau) %>% 
+  na.omit()
+
+data_bio_sanguin_ma_pearson <- data_bio_sanguin_ma_pearson %>% rename("Cholesterol total" = cholesterol_total, 
+                                                  "Cholesterol hdl" = cholesterol_hdl,
+                                                  "Cholesterol ldl" = cholesterol_ldl,
+                                                  "Glucose" = glucose_jeun,
+                                                  "Triglycérides" = triglycerides,
+                                                  "Abeta42" = abeta42,
+                                                  "Abeta40" = abeta40,
+                                                  "Tau" = tau,
+                                                  "Ptau" = ptau)
+
+Columns=sapply(data_bio_sanguin_ma_pearson,is.numeric)
+Correl=cor(data_bio_sanguin_ma_pearson[,Columns], method = "pearson")
+
+ggcorrplot(Correl,hc.order=TRUE, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+##### Spearman
+
+```{r,echo=FALSE}
+data_bio_sanguin_ma_spearman = data2 %>%
+  select (cholesterol_total,cholesterol_hdl,cholesterol_ldl,glucose_jeun, triglycerides, abeta42,abeta40,tau,ptau) %>% 
+  na.omit()
+
+data_bio_sanguin_ma_spearman <- data_bio_sanguin_ma_spearman %>% rename("Cholesterol total" = cholesterol_total, 
+                                                  "Cholesterol hdl" = cholesterol_hdl,
+                                                  "Cholesterol ldl" = cholesterol_ldl,
+                                                  "Glucose" = glucose_jeun,
+                                                  "Triglycérides" = triglycerides,
+                                                  "Abeta42" = abeta42,
+                                                  "Abeta40" = abeta40,
+                                                  "Tau" = tau,
+                                                  "Ptau" = ptau)
+
+Columns=sapply(data_bio_sanguin_ma_spearman,is.numeric)
+Correl=cor(data_bio_sanguin_ma_spearman[,Columns], method = "spearman")
+
+ggcorrplot(Correl, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+
+## Autres biomarqueurs
+
+### Folates (nmol/l) {.tabset}
+
+
+#### Summary
+```{r , echo = FALSE}
+data2$folates = as.numeric(data2$folates)
+summ(data2$folates)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$folates)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$folates)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$folates.reg[data2$folates >= 7] = "Taux de folates normal"
+data2$folates.reg[data2$folates < 7] = "Carence en folates"
+
+p.table(data2$folates.reg)
+```
+
+
+
+
+
+
+
+
+
+### Vitamine B12 (pmol/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+data2$vitamine_b12 = as.numeric(data2$vitamine_b12)
+summ(data2$vitamine_b12)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$vitamine_b12)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$vitamine_b12)
+```
+
+
+
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$vitamine_b12)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$vitamine_b12.reg[data2$vitamine_b12 >= 147.6] = "Taux de Vitamine B12 normal"
+data2$vitamine_b12.reg[data2$vitamine_b12 < 147.6] = "Carence en Vitamine B12"
+
+p.table(data2$vitamine_b12.reg)
+```
+
+### Vitamine D (nmol/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+data2$vitamine_d = as.numeric(data2$vitamine_d)
+summ(data2$vitamine_d)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$vitamine_d)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$vitamine_d)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$vitamine_d.reg[data2$vitamine_d >= 50] = "Taux de vitamine D normal"
+data2$vitamine_d.reg[data2$vitamine_d < 50] = "Carence en vitamine D"
+
+p.table(data2$vitamine_d.reg)
+```
+
+### Proteines (g/l) {.tabset}
+
+
+#### Summary
+```{r , echo = FALSE}
+data2$proteines = as.numeric(data2$proteines)
+
+summ(data2$proteines)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$proteines)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$proteines)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$proteines.reg[data2$proteines < 60] = "hypoprotéinémie"
+data2$proteines.reg[data2$proteines >= 60] = "protéines normal"
+data2$proteines.reg[data2$proteines > 80] = "hyperprotéinémie"
+
+p.table(data2$proteines.reg)
+```
+
+
+### TSH (mu/l) {.tabset}
+
+
+#### Summary
+```{r , echo = FALSE}
+data2$tsh = as.numeric(data2$tsh)
+
+summ(data2$tsh)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$tsh)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$tsh)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$tsh.reg[data2$tsh < 0.5] = "hyperthyroïdie"
+data2$tsh.reg[data2$tsh >= 0.5] = "TSH normal"
+data2$tsh.reg[data2$tsh > 5] = "hyperthyroïdie"
+
+p.table(data2$tsh.reg)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Uree (mmol/l) {.tabset}
+
+#### Summary
+```{r , echo = FALSE}
+data2$uree = as.numeric(data2$uree)
+
+summ(data2$uree)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$uree)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$uree)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$uree.reg[data2$uree < 3] = "urée faible"
+data2$uree.reg[data2$uree >= 3] = "urée normal"
+data2$uree.reg[data2$uree > 7.5] = "urémie chronique ou aiguë"
+
+p.table(data2$uree.reg)
+```
+
+
+
+
+
+
+### Creatinine (umol/l) {.tabset}
+
+
+#### Summary
+```{r , echo = FALSE}
+data2$creatinine = as.numeric(data2$creatinine)
+
+summ(data2$creatinine)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$creatinine)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$creatinine)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$creatinine.reg[data2$creatinine < 53] = "créatinine faible"
+data2$creatinine.reg[data2$creatinine >= 53] = "créatinine normal"
+data2$creatinine.reg[data2$creatinine > 97] = "créatinine élevé"
+
+p.table(data2$creatinine.reg)
+```
+
+
+
+
+
+### Calcium (mmol/l) {.tabset}
+
+#### Summary
+
+```{r , echo = FALSE}
+data2$calcium = as.numeric(data2$calcium)
+
+data2$calcium = outlier_hampel(data2$calcium)
+summ(data2$calcium)
+```
+
+#### Boxplot
+```{r , echo = FALSE}
+boxplot(data2$calcium)
+```
+
+#### Histogramme
+```{r , echo = FALSE}
+hist(data2$calcium)
+```
+
+#### Découpage
+```{r , echo = FALSE}
+data2$calcium.reg[data2$calcium <= 2.2] = "calcium faible"
+data2$calcium.reg[data2$calcium > 2.2] = "calcium normal"
+data2$calcium.reg[data2$calcium > 2.6] = "calcium élevé"
+
+p.table(data2$calcium.reg)
+```
+
+```{r, echo=FALSE}
+k = 3
+
+binf <- median(data2$calcium,na.rm = TRUE) - k * mad(data2$calcium,na.rm = TRUE) 
+bsup = median(data2$calcium,na.rm = TRUE) + k * mad(data2$calcium,na.rm = TRUE) 
+
+outlier_calcium <- which(data2$calcium < binf | data2$calcium > bsup)
+outlier_calcium
+
+test = data2$calcium
+for (i in outlier_calcium){
+  test[i] = NA
+}
+summ(test)
+```
+
+### Corrélation {.tabset}
+
+#### Autres marqueurs + age {.tabset}
+
+
+##### Pearson
+
+```{r,echo=FALSE}
+autres_marqueurs_age_pearson = data2 %>%
+  select (folates,vitamine_b12,vitamine_d,proteines, tsh, uree,creatinine,calcium,age) %>% 
+  na.omit()
+
+autres_marqueurs_age_pearson <- autres_marqueurs_age_pearson %>% rename(
+                                                  "Folates" = folates,
+                                                  "Vitamine B12" = vitamine_b12,
+                                                  "Vitamine D" = vitamine_d,
+                                                  "Proteines" = proteines,
+                                                  "TSH" = tsh,
+                                                  "Uree" = uree,
+                                                  "Creatinine" = creatinine,
+                                                  "Calcium" = calcium,
+                                                  "Age" = age)
+
+Columns=sapply(autres_marqueurs_age_pearson,is.numeric)
+Correl=cor(autres_marqueurs_age_pearson[,Columns], method = "pearson")
+
+ggcorrplot(Correl,hc.order=TRUE, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+##### Spearman
+
+```{r,echo=FALSE}
+autres_marqueurs_age_spearman = data2 %>%
+  select (folates,vitamine_b12,vitamine_d,proteines, tsh, uree,creatinine,calcium,age) %>% 
+  na.omit()
+
+autres_marqueurs_age_spearman <- autres_marqueurs_age_spearman %>% rename(
+                                                  "Folates" = folates,
+                                                  "Vitamine B12" = vitamine_b12,
+                                                  "Vitamine D" = vitamine_d,
+                                                  "Proteines" = proteines,
+                                                  "TSH" = tsh,
+                                                  "Uree" = uree,
+                                                  "Creatinine" = creatinine,
+                                                  "Calcium" = calcium,
+                                                  "Age" = age)
+Columns=sapply(autres_marqueurs_age_spearman,is.numeric)
+Correl=cor(autres_marqueurs_age_spearman[,Columns], method = "spearman")
+
+ggcorrplot(Correl, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+
+
+#### Autres marqueurs + mmse + apoe  {.tabset}
+
+
+##### Pearson
+
+
+```{r,echo=FALSE}
+autres_marqueurs_mmse_pearson = data2 %>%
+  select (folates,vitamine_b12,vitamine_d,proteines, tsh, uree,creatinine,calcium,mmse,apoe) %>% 
+  na.omit()
+
+autres_marqueurs_mmse_pearson <- autres_marqueurs_mmse_pearson %>% rename(
+                                                  "Folates" = folates,
+                                                  "Vitamine B12" = vitamine_b12,
+                                                  "Vitamine D" = vitamine_d,
+                                                  "Proteines" = proteines,
+                                                  "TSH" = tsh,
+                                                  "Uree" = uree,
+                                                  "Creatinine" = creatinine,
+                                                  "Calcium" = calcium,
+                                                  "mmse" = mmse,
+                                                  "apoe" = apoe)
+
+Columns=sapply(autres_marqueurs_mmse_pearson,is.numeric)
+Correl=cor(autres_marqueurs_mmse_pearson[,Columns], method = "pearson")
+
+ggcorrplot(Correl,hc.order=TRUE, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+##### Spearman
+
+```{r,echo=FALSE}
+autres_marqueurs_mmse_spearman = data2 %>%
+  select (folates,vitamine_b12,vitamine_d,proteines, tsh, uree,creatinine,calcium,mmse,apoe) %>% 
+  na.omit()
+
+autres_marqueurs_mmse_spearman <- autres_marqueurs_mmse_spearman %>% rename(
+                                                  "Folates" = folates,
+                                                  "Vitamine B12" = vitamine_b12,
+                                                  "Vitamine D" = vitamine_d,
+                                                  "Proteines" = proteines,
+                                                  "TSH" = tsh,
+                                                  "Uree" = uree,
+                                                  "Creatinine" = creatinine,
+                                                  "Calcium" = calcium,
+                                                  "mmse" = mmse,
+                                                  "apoe" = apoe)
+Columns=sapply(autres_marqueurs_mmse_spearman,is.numeric)
+Correl=cor(autres_marqueurs_mmse_spearman[,Columns], method = "spearman")
+
+ggcorrplot(Correl, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+
+
+#### Autres marqueurs + Biomarqueur sanguin  {.tabset}
+
+
+##### Pearson
+
+
+```{r,echo=FALSE}
+autres_marqueurs_mmse_pearson = data2 %>%
+  select (folates,vitamine_b12,vitamine_d,proteines, tsh, uree,creatinine,calcium,cholesterol_total,cholesterol_hdl,cholesterol_ldl,glucose_jeun, triglycerides) %>% 
+  na.omit()
+
+autres_marqueurs_mmse_pearson <- autres_marqueurs_mmse_pearson %>% rename(
+                                                  "Folates" = folates,
+                                                  "Vitamine B12" = vitamine_b12,
+                                                  "Vitamine D" = vitamine_d,
+                                                  "Proteines" = proteines,
+                                                  "TSH" = tsh,
+                                                  "Uree" = uree,
+                                                  "Creatinine" = creatinine,
+                                                  "Calcium" = calcium,
+                                                  "Cholesterol total" = cholesterol_total, 
+                                                  "Cholesterol hdl" = cholesterol_hdl,
+                                                  "Cholesterol ldl" = cholesterol_ldl,
+                                                  "Glucose" = glucose_jeun,
+                                                  "Triglycérides" = triglycerides)
+
+Columns=sapply(autres_marqueurs_mmse_pearson,is.numeric)
+Correl=cor(autres_marqueurs_mmse_pearson[,Columns], method = "pearson")
+
+ggcorrplot(Correl,hc.order=TRUE, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+##### Spearman
+
+```{r,echo=FALSE}
+autres_marqueurs_mmse_spearman = data2 %>%
+  select (folates,vitamine_b12,vitamine_d,proteines, tsh, uree,creatinine,calcium,cholesterol_total,cholesterol_hdl,cholesterol_ldl,glucose_jeun, triglycerides) %>% 
+  na.omit()
+
+autres_marqueurs_mmse_spearman <- autres_marqueurs_mmse_spearman %>% rename(
+                                                  "Folates" = folates,
+                                                  "Vitamine B12" = vitamine_b12,
+                                                  "Vitamine D" = vitamine_d,
+                                                  "Proteines" = proteines,
+                                                  "TSH" = tsh,
+                                                  "Uree" = uree,
+                                                  "Creatinine" = creatinine,
+                                                  "Calcium" = calcium,
+                                                  "Cholesterol total" = cholesterol_total, 
+                                                  "Cholesterol hdl" = cholesterol_hdl,
+                                                  "Cholesterol ldl" = cholesterol_ldl,
+                                                  "Glucose" = glucose_jeun,
+                                                  "Triglycérides" = triglycerides)
+Columns=sapply(autres_marqueurs_mmse_spearman,is.numeric)
+Correl=cor(autres_marqueurs_mmse_spearman[,Columns], method = "spearman")
+
+ggcorrplot(Correl, type ="lower",outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+lab=TRUE)
+```
+
+
+# Etude d'association
+
+
+```{r,echo=FALSE}
+lm_reg = function(y,x,data){
+  
+  len_x = length(x)
+  
+  if (len_x == 1){
+    
+    reg <- lm(eval(parse(text = paste0(y))) ~ eval(parse(text = paste0(x[1]))), data = data)
+    
+    tbl = tbl_regression(reg,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1]))
+
+    
+  }else if (len_x == 2){
+    
+    reg <- lm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))),
+               data = data)
+    
+    tbl = tbl_regression(reg,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2]))
+    
+  }else if (len_x == 3){
+    
+    reg <- lm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))),
+               data = data)
+    tbl = tbl_regression(reg,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3]))
+    
+    
+  }else if (len_x == 4){
+    
+    reg <- lm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))),
+               data = data)
+    tbl = tbl_regression(reg,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4]))
+               
+  }else if (len_x == 5){
+    
+    reg <- lm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))) +
+                 eval(parse(text = paste0(x[5]))),
+               data = data)
+    tbl = tbl_regression(reg,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4],
+                                     `eval(parse(text = paste0(x[5])))` ~ x[5]))
+
+    
+  }else if (len_x == 6){
+    
+    reg <- lm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))) +
+                 eval(parse(text = paste0(x[5]))) +
+                 eval(parse(text = paste0(x[6]))),
+               data = data)
+    tbl = tbl_regression(reg,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4],
+                                     `eval(parse(text = paste0(x[5])))` ~ x[5],
+                                     `eval(parse(text = paste0(x[6])))` ~ x[6]))
+    
+  }else if (len_x == 7){
+    
+    reg <- lm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))) +
+                 eval(parse(text = paste0(x[5]))) +
+                 eval(parse(text = paste0(x[6]))) +
+                 eval(parse(text = paste0(x[7]))),
+               data = data)
+    tbl = tbl_regression(reg,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4],
+                                     `eval(parse(text = paste0(x[5])))` ~ x[5],
+                                     `eval(parse(text = paste0(x[6])))` ~ x[6],
+                                     `eval(parse(text = paste0(x[7])))` ~ x[7]))
+  }else if (len_x == 8){
+    
+    reg <- lm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))) +
+                 eval(parse(text = paste0(x[5]))) +
+                 eval(parse(text = paste0(x[6]))) +
+                 eval(parse(text = paste0(x[7]))) +
+                 eval(parse(text = paste0(x[8]))),
+               data = data)
+    tbl = tbl_regression(reg,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4],
+                                     `eval(parse(text = paste0(x[5])))` ~ x[5],
+                                     `eval(parse(text = paste0(x[6])))` ~ x[6],
+                                     `eval(parse(text = paste0(x[7])))` ~ x[7],
+                                     `eval(parse(text = paste0(x[8])))` ~ x[8]))
+  }else if (len_x == 9){
+    
+    reg <- lm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))) +
+                 eval(parse(text = paste0(x[5]))) +
+                 eval(parse(text = paste0(x[6]))) +
+                 eval(parse(text = paste0(x[7]))) +
+                 eval(parse(text = paste0(x[8]))) +
+                 eval(parse(text = paste0(x[9]))),
+               data = data)
+    tbl = tbl_regression(reg,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4],
+                                     `eval(parse(text = paste0(x[5])))` ~ x[5],
+                                     `eval(parse(text = paste0(x[6])))` ~ x[6],
+                                     `eval(parse(text = paste0(x[7])))` ~ x[7],
+                                     `eval(parse(text = paste0(x[8])))` ~ x[8],
+                                     `eval(parse(text = paste0(x[9])))` ~ x[9]))
+  }
+  
+  return(tbl)
+
+}
+
+```
+
+```{r,echo=FALSE}
+glm_reg = function(y,x,data){
+  
+  len_x = length(x)
+  
+  if (len_x == 1){
+    
+    reg <- glm(eval(parse(text = paste0(y))) ~ eval(parse(text = paste0(x[1]))), data = data, family = binomial(logit))
+    
+    tbl = tbl_regression(reg, exponentiate = TRUE,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1]))
+
+    
+  }else if (len_x == 2){
+    
+    reg <- glm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))),
+               data = data, family = binomial(logit))
+    
+    tbl = tbl_regression(reg, exponentiate = TRUE,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2]))
+    
+  }else if (len_x == 3){
+    
+    reg <- glm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))),
+               data = data, family = binomial(logit))
+    tbl = tbl_regression(reg, exponentiate = TRUE,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3]))
+    
+    
+  }else if (len_x == 4){
+    
+    reg <- glm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))),
+               data = data, family = binomial(logit))
+    tbl = tbl_regression(reg, exponentiate = TRUE,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4]))
+               
+  }else if (len_x == 5){
+    
+    reg <- glm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))) +
+                 eval(parse(text = paste0(x[5]))),
+               data = data, family = binomial(logit))
+    tbl = tbl_regression(reg, exponentiate = TRUE,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4],
+                                     `eval(parse(text = paste0(x[5])))` ~ x[5]))
+
+    
+  }else if (len_x == 6){
+    
+    reg <- glm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))) +
+                 eval(parse(text = paste0(x[5]))) +
+                 eval(parse(text = paste0(x[6]))),
+               data = data, family = binomial(logit))
+    tbl = tbl_regression(reg, exponentiate = TRUE,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4],
+                                     `eval(parse(text = paste0(x[5])))` ~ x[5],
+                                     `eval(parse(text = paste0(x[6])))` ~ x[6]))
+    
+  }else if (len_x == 7){
+    
+    reg <- glm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))) +
+                 eval(parse(text = paste0(x[5]))) +
+                 eval(parse(text = paste0(x[6]))) +
+                 eval(parse(text = paste0(x[7]))),
+               data = data, family = binomial(logit))
+    tbl = tbl_regression(reg, exponentiate = TRUE,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4],
+                                     `eval(parse(text = paste0(x[5])))` ~ x[5],
+                                     `eval(parse(text = paste0(x[6])))` ~ x[6],
+                                     `eval(parse(text = paste0(x[7])))` ~ x[7]))
+  }else if (len_x == 8){
+    
+    reg <- glm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))) +
+                 eval(parse(text = paste0(x[5]))) +
+                 eval(parse(text = paste0(x[6]))) +
+                 eval(parse(text = paste0(x[7]))) +
+                 eval(parse(text = paste0(x[8]))),
+               data = data, family = binomial(logit))
+    tbl = tbl_regression(reg, exponentiate = TRUE,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4],
+                                     `eval(parse(text = paste0(x[5])))` ~ x[5],
+                                     `eval(parse(text = paste0(x[6])))` ~ x[6],
+                                     `eval(parse(text = paste0(x[7])))` ~ x[7],
+                                     `eval(parse(text = paste0(x[8])))` ~ x[8]))
+  }else if (len_x == 9){
+    
+    reg <- glm(eval(parse(text = paste0(y))) ~ 
+                 eval(parse(text = paste0(x[1]))) +
+                 eval(parse(text = paste0(x[2]))) + 
+                 eval(parse(text = paste0(x[3]))) +
+                 eval(parse(text = paste0(x[4]))) +
+                 eval(parse(text = paste0(x[5]))) +
+                 eval(parse(text = paste0(x[6]))) +
+                 eval(parse(text = paste0(x[7]))) +
+                 eval(parse(text = paste0(x[8]))) +
+                 eval(parse(text = paste0(x[9]))),
+               data = data, family = binomial(logit))
+    tbl = tbl_regression(reg, exponentiate = TRUE,
+                        label = list(`eval(parse(text = paste0(x[1])))` ~ x[1],
+                                     `eval(parse(text = paste0(x[2])))` ~ x[2],
+                                     `eval(parse(text = paste0(x[3])))` ~ x[3],
+                                     `eval(parse(text = paste0(x[4])))` ~ x[4],
+                                     `eval(parse(text = paste0(x[5])))` ~ x[5],
+                                     `eval(parse(text = paste0(x[6])))` ~ x[6],
+                                     `eval(parse(text = paste0(x[7])))` ~ x[7],
+                                     `eval(parse(text = paste0(x[8])))` ~ x[8],
+                                     `eval(parse(text = paste0(x[9])))` ~ x[9]))
+  }
+  
+  return(tbl)
+
+}
+
+```
+
+```{r,echo = FALSE}
+data2$presence_biomarqueur = 0
+data2 = data2 %>% mutate(presence_biomarqueur = replace(presence_biomarqueur,is.na(glucose_jeun) == F | is.na(cholesterol_total) == F | is.na(triglycerides) == F,1))
+```
+
+
+## Abeta42 {.tabset}
+
+
+```{r,echo = FALSE}
+
+### Mise en forme Abeta42 en catégorie
+
+data2$abeta42t2 <- FALSE
+data2$abeta42t2[data2$abeta42t == "abeta42 faible"] <- TRUE
+
+#p.table(data2$abeta42t2)
+```
+
+### Tableau de fréquence
+
+```{r results='asis',echo = FALSE}
+
+data_am = filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,     
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+
+
+data_am$sexe = as.factor(data_am$sexe)
+data_am$ch = as.factor(data_am$ch)
+data_am$dia = as.factor(data_am$dia)
+data_am$apoe.reg2 = as.factor(data_am$apoe.reg2)
+
+labels(data_am)  <- c(age = 'Age', sexe_reg = "Sexe", glucose_jeun = "Glucose",apoe.reg2 = "Présence E4", mmse = "MMSE", ch = "Traitement cholesterol", dia = "Traitement Diabete",triglycerides = "Triglycerides",cholesterol_total = "Cholesterol",cholesterol_hdl = "Cholesterol hdl",cholesterol_ldl = "Cholesterol ldl",niveau_etude_reg = "Niveau d'étude")
+
+tab1 <- tableby(abeta42t~  age + sexe_reg  + glucose_jeun + triglycerides + cholesterol_total + cholesterol_hdl + cholesterol_ldl + apoe.reg2 + mmse + ch + dia + niveau_etude_reg, data=data_am)
+summary(tab1, text=TRUE)
+```
+
+
+
+
+
+
+
+### Abeta42 en Catégorie {.tabset}
+
+#### Association avec le cholestérol {.tabset}
+
+```{r,echo=FALSE}
+### Association avec cholestérol 
+
+data_am_cho = filter(data2, is.na(abeta42t2) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_am_cho$cholesterol_total = scale(data_am_cho$cholesterol_total)
+data_am_cho$age = data_am_cho$age/10
+
+y = "abeta42t2"
+dt = data_am_cho
+
+paste0("N = ",nrow(dt))
+```
+
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age")
+m1 = glm_reg(y,x,dt)
+m1
+```
+
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg")
+m2 = glm_reg(y,x,dt)
+m2
+```
+
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = glm_reg(y,x,dt)
+m3
+```
+
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = glm_reg(y,x,dt)
+m4
+```
+
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = glm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = glm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+#### Association avec le glucose {.tabset}
+
+```{r,echo=FALSE}
+### Association avec le glucose 
+
+data_am_glucose = filter(data2, is.na(abeta42t2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_am_glucose$glucose_jeun = scale(data_am_glucose$glucose_jeun)
+data_am_glucose$age = data_am_glucose$age/10
+
+y = "abeta42t2"
+dt = data_am_glucose
+
+paste0("N = ",nrow(dt))
+```
+
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age")
+m1 = glm_reg(y,x,dt)
+m1
+```
+
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg")
+m2 = glm_reg(y,x,dt)
+m2
+```
+
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = glm_reg(y,x,dt)
+m3
+```
+
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = glm_reg(y,x,dt)
+m4
+```
+
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = glm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = glm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+### Abeta42 en Continue {.tabset}
+
+#### Association avec le cholestérol {.tabset}
+```{r,echo=FALSE}
+### Association avec cholestérol 
+
+data_ac_cho = filter(data2, is.na(abeta42) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_ac_cho$cholesterol_total = scale(data_ac_cho$cholesterol_total)
+data_ac_cho$age = data_ac_cho$age/10
+
+y = "abeta42"
+dt = data_ac_cho
+
+paste0("N = ",nrow(dt))
+```
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age")
+m1 = lm_reg(y,x,dt)
+m1
+```
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg")
+m2 = lm_reg(y,x,dt)
+m2
+```
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = lm_reg(y,x,dt)
+m3
+```
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = lm_reg(y,x,dt)
+m4
+```
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = lm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = lm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+#### Association avec le glucose {.tabset}
+```{r,echo=FALSE}
+### Association avec le glucose 
+
+data_ac_glucose = filter(data2, is.na(abeta42) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_ac_glucose$glucose_jeun = scale(data_ac_glucose$glucose_jeun)
+data_ac_glucose$age = data_ac_glucose$age/10
+
+y = "abeta42"
+dt = data_ac_glucose
+
+paste0("N = ",nrow(dt))
+```
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age")
+m1 = lm_reg(y,x,dt)
+m1
+```
+
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg")
+m2 = lm_reg(y,x,dt)
+m2
+```
+
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = lm_reg(y,x,dt)
+m3
+```
+
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = lm_reg(y,x,dt)
+m4
+```
+
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = lm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = lm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+
+## Abeta40 {.tabset}
+
+
+### Abeta40 en Continue {.tabset}
+
+#### Association avec le cholestérol {.tabset}
+```{r,echo=FALSE}
+### Association avec cholestérol 
+
+data_a40c_cho = filter(data2, is.na(abeta42) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_a40c_cho$cholesterol_total = scale(data_a40c_cho$cholesterol_total)
+data_a40c_cho$age = data_a40c_cho$age/10
+
+y = "abeta40"
+dt = data_a40c_cho
+paste0("N = ",nrow(dt))
+```
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age")
+m1 = lm_reg(y,x,dt)
+m1
+```
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg")
+m2 = lm_reg(y,x,dt)
+m2
+```
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = lm_reg(y,x,dt)
+m3
+```
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = lm_reg(y,x,dt)
+m4
+```
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = lm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = lm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+#### Association avec le glucose {.tabset}
+```{r,echo=FALSE}
+### Association avec le glucose 
+
+data_a40c_glucose = filter(data2, is.na(abeta40) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_a40c_glucose$glucose_jeun = scale(data_a40c_glucose$glucose_jeun)
+data_a40c_glucose$age = data_a40c_glucose$age/10
+
+y = "abeta40"
+dt = data_a40c_glucose
+paste0("N = ",nrow(dt))
+```
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age")
+m1 = lm_reg(y,x,dt)
+m1
+```
+
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg")
+m2 = lm_reg(y,x,dt)
+m2
+```
+
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = lm_reg(y,x,dt)
+m3
+```
+
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = lm_reg(y,x,dt)
+m4
+```
+
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = lm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = lm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1,m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+
+## Tau {.tabset}
+
+
+```{r,echo = FALSE}
+
+### Mise en forme Tau en catégorie
+
+data2$taut2 <- FALSE
+data2$taut2[data2$taut == "tau elevé"] <- TRUE
+
+#p.table(data2$abeta42t2)
+```
+
+### Tableau de fréquence
+
+```{r results='asis',echo = FALSE}
+
+data_tm = filter(data2, is.na(taut) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,     
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+
+
+data_tm$sexe = as.factor(data_tm$sexe)
+data_tm$ch = as.factor(data_tm$ch)
+data_tm$dia = as.factor(data_tm$dia)
+data_tm$apoe.reg2 = as.factor(data_tm$apoe.reg2)
+
+labels(data_tm)  <- c(age = 'Age', sexe_reg = "Sexe", glucose_jeun = "Glucose",apoe.reg2 = "Présence E4", mmse = "MMSE", ch = "Traitement cholesterol", dia = "Traitement Diabete",triglycerides = "Triglycerides",cholesterol_total = "Cholesterol",cholesterol_hdl = "Cholesterol hdl",cholesterol_ldl = "Cholesterol ldl",niveau_etude_reg = "Niveau d'étude")
+
+tab1 <- tableby(taut~  age + sexe_reg  + glucose_jeun + triglycerides + cholesterol_total + cholesterol_hdl + cholesterol_ldl + apoe.reg2 + mmse + ch + dia + niveau_etude_reg, data=data_tm)
+summary(tab1, text=TRUE)
+```
+
+
+
+
+
+
+
+### Tau en Catégorie {.tabset}
+
+#### Association avec le cholestérol {.tabset}
+
+```{r,echo=FALSE}
+### Association avec cholestérol 
+
+data_tm_cho = filter(data2, is.na(taut2) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_tm_cho$cholesterol_total = scale(data_tm_cho$cholesterol_total)
+data_tm_cho$age = data_tm_cho$age/10
+
+y = "taut2"
+dt = data_tm_cho
+paste0("N = ",nrow(dt))
+```
+
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age")
+m1 = glm_reg(y,x,dt)
+m1
+```
+
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg")
+m2 = glm_reg(y,x,dt)
+m2
+```
+
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = glm_reg(y,x,dt)
+m3
+```
+
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = glm_reg(y,x,dt)
+m4
+```
+
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = glm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = glm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+#### Association avec le glucose {.tabset}
+
+```{r,echo=FALSE}
+### Association avec le glucose 
+
+data_tm_glucose = filter(data2, is.na(taut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_tm_glucose$glucose_jeun = scale(data_tm_glucose$glucose_jeun)
+data_tm_glucose$age = data_tm_glucose$age/10
+
+y = "taut2"
+dt = data_tm_glucose
+paste0("N = ",nrow(dt))
+```
+
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age")
+m1 = glm_reg(y,x,dt)
+m1
+```
+
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg")
+m2 = glm_reg(y,x,dt)
+m2
+```
+
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = glm_reg(y,x,dt)
+m3
+```
+
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = glm_reg(y,x,dt)
+m4
+```
+
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = glm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = glm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+### Tau en Continue {.tabset}
+
+#### Association avec le cholestérol {.tabset}
+```{r,echo=FALSE}
+### Association avec cholestérol 
+
+data_tc_cho = filter(data2, is.na(tau) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_tc_cho$cholesterol_total = scale(data_tc_cho$cholesterol_total)
+data_tc_cho$age = data_tc_cho$age/10
+
+y = "tau"
+dt = data_tc_cho
+paste0("N = ",nrow(dt))
+```
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age")
+m1 = lm_reg(y,x,dt)
+m1
+```
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg")
+m2 = lm_reg(y,x,dt)
+m2
+```
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = lm_reg(y,x,dt)
+m3
+```
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = lm_reg(y,x,dt)
+m4
+```
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = lm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = lm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+#### Association avec le glucose {.tabset}
+```{r,echo=FALSE}
+### Association avec le glucose 
+
+data_tc_glucose = filter(data2, is.na(tau) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_tc_glucose$glucose_jeun = scale(data_tc_glucose$glucose_jeun)
+data_tc_glucose$age = data_tc_glucose$age/10
+
+y = "tau"
+dt = data_tc_glucose
+paste0("N = ",nrow(dt))
+```
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age")
+m1 = lm_reg(y,x,dt)
+m1
+```
+
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg")
+m2 = lm_reg(y,x,dt)
+m2
+```
+
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = lm_reg(y,x,dt)
+m3
+```
+
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = lm_reg(y,x,dt)
+m4
+```
+
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = lm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = lm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+
+
+
+## Ptau {.tabset}
+
+
+```{r,echo = FALSE}
+
+### Mise en forme Ptau en catégorie
+
+data2$ptaut2 <- FALSE
+data2$ptaut2[data2$ptaut == "ptau elevé"] <- TRUE
+
+```
+
+### Tableau de fréquence
+
+```{r results='asis',echo = FALSE}
+
+data_ptm = filter(data2, is.na(ptaut) == F,
+               is.na(glucose_jeun) == F,
+               is.na(triglycerides) == F,
+               is.na(cholesterol_total) == F,     
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(dia) == F)
+
+
+
+data_ptm$sexe = as.factor(data_ptm$sexe)
+data_ptm$ch = as.factor(data_ptm$ch)
+data_ptm$dia = as.factor(data_ptm$dia)
+data_ptm$apoe.reg2 = as.factor(data_ptm$apoe.reg2)
+
+labels(data_ptm)  <- c(age = 'Age', sexe_reg = "Sexe", glucose_jeun = "Glucose",apoe.reg2 = "Présence E4", mmse = "MMSE", ch = "Traitement cholesterol", dia = "Traitement Diabete",triglycerides = "Triglycerides",cholesterol_total = "Cholesterol",cholesterol_hdl = "Cholesterol hdl",cholesterol_ldl = "Cholesterol ldl",niveau_etude_reg = "Niveau d'étude")
+
+tab1 <- tableby(ptaut~  age + sexe_reg  + glucose_jeun + triglycerides + cholesterol_total + cholesterol_hdl + cholesterol_ldl + apoe.reg2 + mmse + ch + dia + niveau_etude_reg, data=data_tm)
+summary(tab1, text=TRUE)
+```
+
+
+
+
+
+
+
+### Ptau en Catégorie {.tabset}
+
+#### Association avec le cholestérol {.tabset}
+
+```{r,echo=FALSE}
+### Association avec cholestérol 
+
+data_ptm_cho = filter(data2, is.na(ptaut2) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_ptm_cho$cholesterol_total = scale(data_ptm_cho$cholesterol_total)
+data_ptm_cho$age = data_ptm_cho$age/10
+
+y = "ptaut2"
+dt = data_ptm_cho
+paste0("N = ",nrow(dt))
+```
+
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age")
+m1 = glm_reg(y,x,dt)
+m1
+```
+
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg")
+m2 = glm_reg(y,x,dt)
+m2
+```
+
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = glm_reg(y,x,dt)
+m3
+```
+
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = glm_reg(y,x,dt)
+m4
+```
+
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = glm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = glm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+#### Association avec le glucose {.tabset}
+
+```{r,echo=FALSE}
+### Association avec le glucose 
+
+data_ptm_glucose = filter(data2, is.na(ptaut2) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_ptm_glucose$glucose_jeun = scale(data_ptm_glucose$glucose_jeun)
+data_ptm_glucose$age = data_ptm_glucose$age/10
+
+y = "ptaut2"
+dt = data_ptm_glucose
+paste0("N = ",nrow(dt))
+```
+
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age")
+m1 = glm_reg(y,x,dt)
+m1
+```
+
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg")
+m2 = glm_reg(y,x,dt)
+m2
+```
+
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = glm_reg(y,x,dt)
+m3
+```
+
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = glm_reg(y,x,dt)
+m4
+```
+
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = glm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = glm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+### Ptau en Continue {.tabset}
+
+#### Association avec le cholestérol {.tabset}
+```{r,echo=FALSE}
+### Association avec cholestérol 
+
+data_ptc_cho = filter(data2, is.na(ptau) == F,
+               is.na(cholesterol_total) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_ptc_cho$cholesterol_total = scale(data_ptc_cho$cholesterol_total)
+data_ptc_cho$age = data_ptc_cho$age/10
+
+y = "ptau"
+dt = data_ptc_cho
+paste0("N = ",nrow(dt))
+```
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age")
+m1 = lm_reg(y,x,dt)
+m1
+```
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg")
+m2 = lm_reg(y,x,dt)
+m2
+```
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = lm_reg(y,x,dt)
+m3
+```
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = lm_reg(y,x,dt)
+m4
+```
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = lm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("cholesterol_total","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = lm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+
+
+
+#### Association avec le glucose {.tabset}
+```{r,echo=FALSE}
+### Association avec le glucose 
+
+data_ptc_glucose = filter(data2, is.na(ptau) == F,
+               is.na(glucose_jeun) == F,
+               is.na(age) == F,
+               is.na(sexe) == F,
+               is.na(apoe.reg2) == F,
+               is.na(ch) == F,
+               is.na(mmse) == F,
+               is.na(imc) == F,
+               is.na(niveau_etude_reg) == F,
+               is.na(dia) == F)
+
+data_ptc_glucose$glucose_jeun = scale(data_ptc_glucose$glucose_jeun)
+data_ptc_glucose$age = data_ptc_glucose$age/10
+
+y = "ptau"
+dt = data_ptc_glucose
+paste0("N = ",nrow(dt))
+```
+
+##### Modèle 1
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age")
+m1 = lm_reg(y,x,dt)
+m1
+```
+
+##### Modèle 2
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg")
+m2 = lm_reg(y,x,dt)
+m2
+```
+
+##### Modèle 3
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2")
+m3 = lm_reg(y,x,dt)
+m3
+```
+
+##### Modèle 4
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse")
+m4 = lm_reg(y,x,dt)
+m4
+```
+
+##### Modèle 5
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia")
+m5 = lm_reg(y,x,dt)
+m5
+```
+
+##### Modèle 6
+
+```{r,echo=FALSE}
+x = c("glucose_jeun","age","sexe","niveau_etude_reg","apoe.reg2","mmse","ch","dia","imc")
+m6 = lm_reg(y,x,dt)
+m6
+```
+
+##### Tableau récapitulatif
+
+```{r,echo=FALSE}
+tab <-
+  tbl_merge(
+    tbls = list(m1, m2,m3,m4,m5,m6),
+    tab_spanner = c("**Modèle 1**", "**Modèle 2**","**Modèle 3**","**Modèle 4**","**Modèle 5**","**Modèle 6**"
+  )
+  )
+
+tab
+```
+
+```{r,echo=FALSE}
+# Export BDD avec scale variable
+
+"data_export = data.frame(abeta42_continu = data2$abeta42_,
+                         abeta_42_modalite = data2$abeta42t2,
+                         tau_continu = data2$tau_,
+                         tau_modalite = data2$taut2,
+                         glucose = data2$glucose_jeun,
+                         glucose_std = scale(data2$glucose_jeun),
+                         triglycerides = data2$triglycerides,
+                         triglycerides_std = scale(data2$triglycerides),
+                         cholesterol_total = data2$cholesterol_total,
+                         cholesterol_total_std = scale(data2$cholesterol_total),
+                         cholesterol_hdl = data2$cholesterol_hdl,
+                         cholesterol_hdl.std = scale(data2$cholesterol_hdl),
+                         cholesterol_ldl = data2$cholesterol_ldl,
+                         cholesterol_ldl.std = scale(data2$cholesterol_ldl),
+                         education = data2$niveau_etude_reg,
+                         age = data2$age,
+                         sexe = data2$sexe_reg,
+                         apoe = data2$apoe,
+                         traitement_chol = data2$ch,
+                         traitement_dia = data2$dia,
+                         mmse = data2$mmse,
+                         imc = data2$imc
+                         )"
+#write.csv(data_export,"//172.27.137.244/g_boilay/alternance/export/data_export.csv")
+```
+
+
+

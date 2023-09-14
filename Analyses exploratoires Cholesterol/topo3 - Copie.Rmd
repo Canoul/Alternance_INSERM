@@ -1,0 +1,1460 @@
+---
+title: "Visualisation Assocation Cholesterol"
+author: "Geoffrey BOILAY"
+date: "`r format(Sys.time(),'%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    collapsed: false
+    smooth_scroll: false
+    toc_depth: '4'
+    df_print: paged
+    theme: cerulean
+    highlight: espresso
+  pdf_document:
+    toc: true
+    toc_depth: 4
+---
+
+
+# Objectif
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE}
+#Library
+
+library(tidyverse)
+library(dplyr)
+library(stringr)
+library(janitor)
+library(corrplot)
+library(BBmisc)
+library(lubridate)
+library(arsenal)
+library(ggfortify)
+library(lmtest)
+library(questionr)
+library(broom)
+library(broom.helpers)
+library(ggeffects)
+library(jtools)
+library("writexl")
+library(gtsummary)
+library(gt)
+library(ggcorrplot)
+library(vcd)
+library(splines)
+library(npreg)
+library(segmented)
+```
+
+L'Objectif est d'explorer la forme de l’association entre le cholesterol et l’abeta42.
+
+
+
+```{r,echo=FALSE}
+# glm
+
+glm_reg = function(y,x,data){
+  glm(formula=reformulate(termlabels = x, response= y), data=data, family = binomial(logit))
+}
+
+# lm
+  
+lm_reg = function(y,x,data){
+  lm(formula=reformulate(termlabels = x, response= y), data=data)  
+}  
+```
+
+```{r,echo=FALSE}
+#Import
+
+data = read.csv("C:/Users/g_boilay/Documents/data2.csv")
+
+```
+
+```{r,echo=FALSE}
+#data_chol abeta42 continue
+
+data_chol = filter(data, is.na(abeta42) == F,
+                   is.na(age) == F,
+                   is.na(sexe) == F,
+                   is.na(apoe.reg2) == F,
+                   is.na(mmse) == F,
+                   is.na(ch) == F,
+                   is.na(dia) == F,
+                   is.na(hta_med) == F,
+                   is.na(imc_reg) == F,
+                   is.na(presence_biomarqueur) == F,
+                   is.na(niveau_etude_reg) == F,
+                   is.na(cholesterol_total) == F,
+                   is.na(cholesterol_ldl) == F,
+                   is.na(cholesterol_hdl) == F,
+)
+
+data_chol = data_chol[-c(1,2,3,4)]
+
+data_chol$cholesterol_total = scale(data_chol$cholesterol_total)
+data_chol$cholesterol_hdl = scale(data_chol$cholesterol_hdl)
+data_chol$cholesterol_ldl = scale(data_chol$cholesterol_ldl)
+
+data_chol$niveau_etude_reg = as.factor(data_chol$niveau_etude_reg)
+data_chol$imc_reg = as.factor(data_chol$imc_reg)
+
+data_chol$sexe = as.factor(data_chol$sexe)
+data_chol$ch = as.factor(data_chol$ch)
+data_chol$dia = as.factor(data_chol$dia)
+data_chol$hta_med = as.factor(data_chol$hta_med)
+data_chol$apoe.reg2 = as.factor(data_chol$apoe.reg2)
+data_chol$ma = as.factor(data_chol$ma)
+data_chol$ma_mci = as.factor(data_chol$ma_mci)
+
+
+data_chol$age_med = data_chol$age - median(data_chol$age)
+data_chol$mmse_med = data_chol$mmse - median(data_chol$mmse)
+
+data_chol$age_med = data_chol$age - median(data_chol$age)
+data_chol$mmse_med = data_chol$mmse - median(data_chol$mmse)
+
+data_chol$niveau_etude_reg <- relevel(data_chol$niveau_etude_reg, ref = "niveau études intermédiaires")
+data_chol$imc_reg <- relevel(data_chol$imc_reg, ref = "Corpulence normale")
+data_chol$niveau_etude_reg <- relevel(data_chol$niveau_etude_reg, ref = "niveau études intermédiaires")
+data_chol$apoe.reg2 <- relevel(data_chol$apoe.reg2, ref = "0")
+data_chol$ch <- relevel(data_chol$ch, ref = "0")
+data_chol$dia <- relevel(data_chol$dia, ref = "0")
+data_chol$hta_med <- relevel(data_chol$hta_med, ref = "0")
+data_chol$sexe <- relevel(data_chol$sexe, ref = "FALSE")
+
+
+data_chol$groupe[data_chol$diagnostic_cli == 1] <- 1
+data_chol$groupe[data_chol$diagnostic_cli == 2] <- 2
+data_chol$groupe[data_chol$diagnostic_cli == 3] <- 3
+data_chol$groupe[data_chol$diagnostic_cli > 3] <- 0
+
+
+data_chol$a = ifelse(data_chol$abeta42t == "abeta42 faible"  | data_chol$ab42_ab40t == "ab42_ab40 faible faible", "+", "-")
+data_chol$t = ifelse(data_chol$ptaut == "ptau elevé","+", "-")
+data_chol$n = ifelse(data_chol$taut == "tau elevé","+", "-")
+
+#A+T+MMSE>=23
+
+data_chol$at_sup23 = ifelse(data_chol$a == "+"  | data_chol$t == "+" | data_chol$mmse >= 23 , 1, 0)
+
+#A+T+MMSE<23
+
+data_chol$at_inf23 = ifelse(data_chol$a == "+"  | data_chol$t == "+" | data_chol$mmse < 23 , 1, 0)
+```
+
+
+
+# Sous groupe
+
+```{r,echo = FALSE}
+####################################################################################################################
+################################ Définir la variable pour le sous groupe ###########################################
+####################################################################################################################
+
+y = "abeta42"
+
+
+# Variable g à définir 
+
+g = "ma"
+
+####################################################################################################################
+data_chol$g = data_chol[,g]
+####################################################################################################################
+
+# Modalité de la variable
+
+m = "1"
+
+# 2ème Modalité de la variable (optionnel => "NA" si null)
+
+mm = "NA"
+
+# 3ème Modalité de la variable (optionnel => "NA" si null)
+
+mmm = "NA"
+
+####################################################################################################################
+if(m != "NA"){data_chol = filter(data_chol,g == m | g == mm |g == mmm)}
+####################################################################################################################
+
+```
+
+```{r,echo = FALSE}
+
+paste0("Marqueur : ", y)
+paste0("Sous groupe : ", g)
+paste0("Modalité : ", m)
+if(mm != "NA"){
+  paste0("Modalité 2 : ", mm)
+}
+if(mmm != "NA"){
+  paste0("Modalité 3 : ", mmm)
+}
+
+
+```
+
+
+
+# Cholesterol Total {.tabset}
+
+```{r, echo=FALSE}
+data_chol$chol = as.numeric(data_chol$cholesterol_total)
+```
+
+
+```{r,echo=FALSE,warning=FALSE}
+data_chol = filter(data_chol, chol < 3.5
+)
+
+data_chol$chol2 = data_chol$chol^2
+data_chol$chol3 = data_chol$chol^3
+```
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_chol))
+```
+## Figures {.tabset}
+
+
+### Spline
+
+```{r,echo=FALSE}
+
+data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0"
+                       )
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+
+fit <- lm(abeta42 ~ bs(chol, df = 5) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+newdata = data_chol_fictif
+
+m_spline = fit
+
+ypred1 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Spline")
+lines(newdata$chol, ypred1[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred1[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred1[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+
+
+### Cubique
+
+```{r,echo=FALSE}
+k = 3
+
+
+data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0",
+                       g = "0"
+                       )
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+
+fit <- lm(abeta42 ~ poly(chol,k) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_cub = fit
+
+newdata = data_chol_fictif
+
+ypred2 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle cubique")
+lines(newdata$chol, ypred2[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred2[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred2[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+
+### quadratique
+
+```{r,echo=FALSE}
+k = 2
+
+
+data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0",
+                       g = "0"
+                       )
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+fit <- lm(abeta42 ~ poly(chol,k) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_quad = fit
+
+newdata = data_chol_fictif
+
+ypred3 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle quadratique")
+lines(newdata$chol, ypred3[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred3[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred3[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+
+### Linéaire
+
+```{r,echo=FALSE}
+k = 1
+
+
+data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0",
+                       g = "0"
+                       )
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+fit <- lm(abeta42 ~ poly(chol,k) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_ln = fit
+
+newdata = data_chol_fictif
+
+ypred4 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle linéaire")
+lines(newdata$chol, ypred4[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred4[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred4[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+### Linéaire par morceau
+
+
+
+
+```{r,echo=FALSE}
+
+mod = lm(abeta42 ~ chol + age_med + sexe + niveau_etude_reg 
+         + mmse_med + ch + dia + hta_med + imc_reg + apoe.reg2, data = data_chol)
+
+m_seg <- segmented(mod,seg.Z = ~chol, psi = 0)
+
+
+#plot(abeta42 ~ chol, data = data_chol, col='steelblue',main ="Modèle linéaire par morceau",xlab= "cholesterol")
+#plot(m_seg, add=T)
+```
+
+
+```{r,echo=FALSE}
+k = m_seg$psi[2]
+
+data_chol$chol1 = ifelse(data_chol$chol <= k, data_chol$chol, k)
+data_chol$chol2 = ifelse(data_chol$chol <= k, 0, data_chol$chol-k)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0",
+                       g = "0"
+                       )
+
+
+data_chol_fictif$chol1 = ifelse(data_chol_fictif$chol <= k, data_chol_fictif$chol, k)
+data_chol_fictif$chol2 = ifelse(data_chol_fictif$chol <= k, 0, data_chol_fictif$chol-k)
+```
+
+```{r,echo=FALSE}
+
+fit <- lm(abeta42 ~ chol1 + chol2 + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_segment = fit
+
+newdata = data_chol_fictif
+
+ypred5 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle linéaire")
+lines(newdata$chol, ypred5[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred5[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred5[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+## Sorties {.tabset}
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_chol))
+```
+
+### Spline
+
+```{r,echo=FALSE}
+summary(m_spline)
+```
+
+
+### Cubique
+
+```{r,echo=FALSE}
+summary(m_cub)
+```
+
+### Quadratique
+
+```{r,echo=FALSE}
+summary(m_quad)
+```
+
+### Linéaire
+
+```{r,echo=FALSE}
+summary(m_ln)
+```
+
+### Linéaire par morceau
+
+```{r,echo=FALSE}
+summary(m_segment)
+
+```
+
+
+
+## Comparaison des modèles {.tabset}
+
+### AIC et BIC
+```{r,echo=FALSE}
+aic = AIC(m_spline,m_cub,m_quad, m_ln,m_seg)[,2]
+bic = BIC(m_spline,m_cub,m_quad, m_ln,m_seg)[,2]
+
+tableau <- data.frame(Model = c("Spline", "Cubique", "Quadratique", "Linéaire", "Linéaire par morceau"),
+                      AIC = aic,
+                      BIC = bic)
+tableau
+```
+### Test de vraisemblance {.tabset}
+
+```{r,echo=FALSE}
+
+m <- lm(abeta42 ~  sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+```
+
+
+#### Spline vs Linéaire
+
+```{r,echo=FALSE}
+anova(m_spline, m_ln, test = "Chisq")
+```
+
+#### Cubique vs Quadratique
+
+```{r,echo=FALSE}
+anova(m_cub,m_quad, test = "Chisq")
+```
+#### Quadratique vs Linéaire
+
+```{r,echo=FALSE}
+anova(m_quad,m_ln, test = "Chisq")
+```
+
+#### Linéaire par morceau vs Linéaire
+
+```{r,echo=FALSE}
+anova(m_seg, m_ln, test = "Chisq")
+```
+
+### Figure avec les 5 modélisations
+
+```{r,echo=FALSE,warning=FALSE}
+
+predall = rbind(ypred1,ypred2,ypred3,ypred4,ypred5)[,1]
+
+
+# Crée un nouveau graphique sans tracé
+plot(data_chol$chol, data_chol$abeta42, type = "n", xlab = "cholesterol", ylab = "abeta42", main = "Figure avec les 5 modélisations",ylim = c(min(predall),max(predall)))
+
+# Ajoute les lignes pour les modélisations
+lines(newdata$chol, ypred1[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred2[, "fit"], lty = 1, col = "orange", lwd = 2)
+lines(newdata$chol, ypred3[, "fit"], lty = 1, col = "green", lwd = 2)
+lines(newdata$chol, ypred4[, "fit"], lty = 1, col = "blue", lwd = 2)
+lines(newdata$chol, ypred5[, "fit"], lty = 1, col = "purple", lwd = 2)
+#plot(m_seg, col = "purple", add = TRUE)
+
+# Zone de tracé pour la légende
+par(xpd = TRUE) # Permet l'affichage en dehors de la zone de tracé
+plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n") # Crée une zone de tracé vide
+
+# Ajoute la légende
+legend("top", legend = c("Spline", "Cubique", "Quadratique", "Linéaire", "Linéaire par morceau"), 
+       lty = 1, col = c("red", "orange", "green", "blue", "purple"), lwd = 2, 
+       xjust = 1, yjust = 1)
+
+```
+
+
+## Effet du Cholesterol {.tabset}
+
+### Spline vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_spline, m, test = "Chisq")
+```
+
+### Cubique vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_cub, m, test = "Chisq")
+```
+
+### Quadratique vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_quad,m, test = "Chisq")
+```
+
+### Linéaire vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_ln, m, test = "Chisq")
+```
+
+### Linéaire par morceau vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_seg, m, test = "Chisq")
+```
+
+
+
+
+
+# Cholesterol Hdl {.tabset}
+
+```{r, echo=FALSE}
+data_chol$chol = as.numeric(data_chol$cholesterol_hdl)
+```
+
+
+```{r,echo=FALSE,warning=FALSE}
+data_chol = filter(data_chol, chol < 3.5
+)
+
+data_chol$chol2 = data_chol$chol^2
+data_chol$chol3 = data_chol$chol^3
+```
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_chol))
+```
+## Figures {.tabset}
+
+
+### Spline
+
+```{r,echo=FALSE}
+
+data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0")
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+
+fit <- lm(abeta42 ~ bs(chol, df = 5) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+newdata = data_chol_fictif
+
+m_spline = fit
+
+ypred1 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Spline")
+lines(newdata$chol, ypred1[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred1[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred1[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+
+
+### Cubique
+
+```{r,echo=FALSE}
+k = 3
+
+
+
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0")
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+
+fit <- lm(abeta42 ~ poly(chol,k) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_cub = fit
+
+newdata = data_chol_fictif
+
+ypred2 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle cubique")
+lines(newdata$chol, ypred2[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred2[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred2[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+
+### quadratique
+
+```{r,echo=FALSE}
+k = 2
+
+
+data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0")
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+fit <- lm(abeta42 ~ poly(chol,k) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_quad = fit
+
+newdata = data_chol_fictif
+
+ypred3 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle quadratique")
+lines(newdata$chol, ypred3[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred3[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred3[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+
+### Linéaire
+
+```{r,echo=FALSE}
+k = 1
+
+
+
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0")
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+fit <- lm(abeta42 ~ poly(chol,k) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_ln = fit
+
+newdata = data_chol_fictif
+
+ypred4 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle linéaire")
+lines(newdata$chol, ypred4[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred4[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred4[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+### Linéaire par morceau
+
+
+
+
+```{r,echo=FALSE}
+
+mod = lm(abeta42 ~ chol + age_med + sexe + niveau_etude_reg 
+         + mmse_med + ch + dia + hta_med + imc_reg + apoe.reg2, data = data_chol)
+
+m_seg <- segmented(mod,seg.Z = ~chol, psi = 0)
+
+
+#plot(abeta42 ~ chol, data = data_chol, col='steelblue',main ="Modèle linéaire par morceau",xlab= "cholesterol")
+#plot(m_seg, add=T)
+```
+
+
+```{r,echo=FALSE}
+k = m_seg$psi[2]
+
+data_chol$chol1 = ifelse(data_chol$chol <= k, data_chol$chol, k)
+data_chol$chol2 = ifelse(data_chol$chol <= k, 0, data_chol$chol-k)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0")
+
+
+data_chol_fictif$chol1 = ifelse(data_chol_fictif$chol <= k, data_chol_fictif$chol, k)
+data_chol_fictif$chol2 = ifelse(data_chol_fictif$chol <= k, 0, data_chol_fictif$chol-k)
+```
+
+```{r,echo=FALSE}
+
+fit <- lm(abeta42 ~ chol1 + chol2 + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_segment = fit
+
+newdata = data_chol_fictif
+
+ypred5 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle linéaire")
+lines(newdata$chol, ypred5[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred5[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred5[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+## Sorties {.tabset}
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_chol))
+```
+
+### Spline
+
+```{r,echo=FALSE}
+summary(m_spline)
+```
+
+
+### Cubique
+
+```{r,echo=FALSE}
+summary(m_cub)
+```
+
+### Quadratique
+
+```{r,echo=FALSE}
+summary(m_quad)
+```
+
+### Linéaire
+
+```{r,echo=FALSE}
+summary(m_ln)
+```
+
+### Linéaire par morceau
+
+```{r,echo=FALSE}
+summary(m_segment)
+
+```
+
+
+
+## Comparaison des modèles {.tabset}
+
+### AIC et BIC
+```{r,echo=FALSE}
+aic = AIC(m_spline,m_cub,m_quad, m_ln,m_seg)[,2]
+bic = BIC(m_spline,m_cub,m_quad, m_ln,m_seg)[,2]
+
+tableau <- data.frame(Model = c("Spline", "Cubique", "Quadratique", "Linéaire", "Linéaire par morceau"),
+                      AIC = aic,
+                      BIC = bic)
+tableau
+```
+### Test de vraisemblance {.tabset}
+
+```{r,echo=FALSE}
+
+m <- lm(abeta42 ~  sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+```
+
+
+#### Spline vs Linéaire
+
+```{r,echo=FALSE}
+anova(m_spline, m_ln, test = "Chisq")
+```
+
+#### Cubique vs Quadratique
+
+```{r,echo=FALSE}
+anova(m_cub,m_quad, test = "Chisq")
+```
+#### Quadratique vs Linéaire
+
+```{r,echo=FALSE}
+anova(m_quad,m_ln, test = "Chisq")
+```
+
+#### Linéaire par morceau vs Linéaire
+
+```{r,echo=FALSE}
+anova(m_seg, m_ln, test = "Chisq")
+```
+
+### Figure avec les 5 modélisations
+
+```{r,echo=FALSE,warning=FALSE}
+predall = rbind(ypred1,ypred2,ypred3,ypred4,ypred5)[,1]
+
+
+# Crée un nouveau graphique sans tracé
+plot(data_chol$chol, data_chol$abeta42, type = "n", xlab = "cholesterol", ylab = "abeta42", main = "Figure avec les 5 modélisations",ylim = c(min(predall),max(predall)))
+
+# Ajoute les lignes pour les modélisations
+lines(newdata$chol, ypred1[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred2[, "fit"], lty = 1, col = "orange", lwd = 2)
+lines(newdata$chol, ypred3[, "fit"], lty = 1, col = "green", lwd = 2)
+lines(newdata$chol, ypred4[, "fit"], lty = 1, col = "blue", lwd = 2)
+lines(newdata$chol, ypred5[, "fit"], lty = 1, col = "purple", lwd = 2)
+#plot(m_seg, col = "purple", add = TRUE)
+
+# Zone de tracé pour la légende
+par(xpd = TRUE) # Permet l'affichage en dehors de la zone de tracé
+plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n") # Crée une zone de tracé vide
+
+# Ajoute la légende
+legend("top", legend = c("Spline", "Cubique", "Quadratique", "Linéaire", "Linéaire par morceau"), 
+       lty = 1, col = c("red", "orange", "green", "blue", "purple"), lwd = 2, 
+       xjust = 1, yjust = 1)
+
+```
+
+
+## Effet du Cholesterol {.tabset}
+
+### Spline vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_spline, m, test = "Chisq")
+```
+
+### Cubique vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_cub, m, test = "Chisq")
+```
+
+### Quadratique vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_quad, m, test = "Chisq")
+```
+
+###    Linéaire vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_ln, m, test = "Chisq")
+```
+
+### Linéaire par morceau vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_seg, m, test = "Chisq")
+```
+
+
+
+
+
+# Cholesterol Ldl {.tabset}
+
+```{r, echo=FALSE}
+data_chol$chol = as.numeric(data_chol$cholesterol_ldl)
+```
+
+
+```{r,echo=FALSE,warning=FALSE}
+data_chol = filter(data_chol, chol < 3.5)
+
+data_chol$chol2 = data_chol$chol^2
+data_chol$chol3 = data_chol$chol^3
+```
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_chol))
+```
+## Figures {.tabset}
+
+
+### Spline
+
+```{r,echo=FALSE}
+
+data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0",
+                       g = "0"
+                       )
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+
+fit <- lm(abeta42 ~ bs(chol, df = 5) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+newdata = data_chol_fictif
+
+m_spline = fit
+
+ypred1 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Spline")
+lines(newdata$chol, ypred1[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred1[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred1[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+
+
+### Cubique
+
+```{r,echo=FALSE}
+k = 3
+
+
+data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0",
+                       g = "0"
+                       )
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+
+fit <- lm(abeta42 ~ poly(chol,k) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_cub = fit
+
+newdata = data_chol_fictif
+
+ypred2 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle cubique")
+lines(newdata$chol, ypred2[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred2[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred2[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+
+### quadratique
+
+```{r,echo=FALSE}
+k = 2
+
+
+data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0",
+                       g = "0"
+                       )
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+fit <- lm(abeta42 ~ poly(chol,k) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_quad = fit
+
+newdata = data_chol_fictif
+
+ypred3 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle quadratique")
+lines(newdata$chol, ypred3[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred3[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred3[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+
+### Linéaire
+
+```{r,echo=FALSE}
+k = 1
+
+
+data_chol_f <- dplyr::select(data_chol,abeta42, chol,chol2,chol3,imc_reg, sexe, age_med, mmse_med, niveau_etude_reg, apoe.reg2,ch,dia,hta_med)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0",
+                       g = "0"
+                       )
+
+data_chol_fictif$chol2 = data_chol_fictif$chol^2
+data_chol_fictif$chol3 = data_chol_fictif$chol^3
+
+```
+
+```{r,echo=FALSE}
+
+fit <- lm(abeta42 ~ poly(chol,k) + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_ln = fit
+
+newdata = data_chol_fictif
+
+ypred4 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle linéaire")
+lines(newdata$chol, ypred4[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred4[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred4[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+### Linéaire par morceau
+
+
+
+
+```{r,echo=FALSE}
+
+mod = lm(abeta42 ~ chol + age_med + sexe + niveau_etude_reg 
+         + mmse_med + ch + dia + hta_med + imc_reg + apoe.reg2, data = data_chol)
+
+m_seg <- segmented(mod,seg.Z = ~chol, psi = 0)
+
+
+#plot(abeta42 ~ chol, data = data_chol, col='steelblue',main ="Modèle linéaire par morceau",xlab= "cholesterol")
+#plot(m_seg, add=T)
+```
+
+
+```{r,echo=FALSE}
+k = m_seg$psi[2]
+
+data_chol$chol1 = ifelse(data_chol$chol <= k, data_chol$chol, k)
+data_chol$chol2 = ifelse(data_chol$chol <= k, 0, data_chol$chol-k)
+
+# Création de la plage de valeurs pour chol
+cholesterol_total_range <- seq(min(data_chol_f$chol), max(data_chol_f$chol), by = 0.1)
+
+# Création du tableau de données pour les nouvelles observations
+data_chol_fictif <- expand.grid(chol = cholesterol_total_range,
+                       abeta42 = NA,
+                       imc_reg = "Corpulence normale",
+                       sexe = "FALSE",
+                       age_med = median(data_chol$age_med),
+                       mmse_med = median(data_chol$mmse_med),
+                       niveau_etude_reg = "niveau études intermédiaires",
+                       apoe.reg2 = "0",
+                       ch = "0",
+                       dia = "0",
+                       hta_med = "0",
+                       g = "0"
+                       )
+
+
+data_chol_fictif$chol1 = ifelse(data_chol_fictif$chol <= k, data_chol_fictif$chol, k)
+data_chol_fictif$chol2 = ifelse(data_chol_fictif$chol <= k, 0, data_chol_fictif$chol-k)
+```
+
+```{r,echo=FALSE}
+
+fit <- lm(abeta42 ~ chol1 + chol2 + sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+
+m_segment = fit
+
+newdata = data_chol_fictif
+
+ypred5 <- predict(fit, newdata = newdata, interval = "confidence")
+
+plot(data_chol$chol, data_chol$abeta42, col='steelblue', xlab = "cholesterol", ylab = "abeta42",main ="Modèle linéaire")
+lines(newdata$chol, ypred5[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred5[, "lwr"], lty = 2, col = "black", lwd = 2)
+lines(newdata$chol, ypred5[, "upr"], lty = 2, col = "black", lwd = 2)
+```
+
+## Sorties {.tabset}
+
+```{r,echo=FALSE}
+paste0("N = ",nrow(data_chol))
+```
+
+### Spline
+
+```{r,echo=FALSE}
+summary(m_spline)
+```
+
+
+### Cubique
+
+```{r,echo=FALSE}
+summary(m_cub)
+```
+
+### Quadratique
+
+```{r,echo=FALSE}
+summary(m_quad)
+```
+
+### Linéaire
+
+```{r,echo=FALSE}
+summary(m_ln)
+```
+
+### Linéaire par morceau
+
+```{r,echo=FALSE}
+summary(m_segment)
+
+```
+
+
+
+## Comparaison des modèles {.tabset}
+
+### AIC et BIC
+```{r,echo=FALSE}
+aic = AIC(m_spline,m_cub,m_quad, m_ln,m_seg)[,2]
+bic = BIC(m_spline,m_cub,m_quad, m_ln,m_seg)[,2]
+
+tableau <- data.frame(Model = c("Spline", "Cubique", "Quadratique", "Linéaire", "Linéaire par morceau"),
+                      AIC = aic,
+                      BIC = bic)
+tableau
+```
+### Test de vraisemblance {.tabset}
+
+```{r,echo=FALSE}
+
+m <- lm(abeta42 ~  sexe + age_med + imc_reg + niveau_etude_reg + apoe.reg2 + ch + dia + hta_med + mmse_med, data = data_chol)
+```
+
+
+#### Spline vs Linéaire
+
+```{r,echo=FALSE}
+anova(m_spline, m_ln, test = "Chisq")
+```
+
+#### Cubique vs Quadratique
+
+```{r,echo=FALSE}
+anova(m_cub,m_quad, test = "Chisq")
+```
+#### Quadratique vs Linéaire
+
+```{r,echo=FALSE}
+anova(m_quad,m_ln, test = "Chisq")
+```
+
+#### Linéaire par morceau vs Linéaire
+
+```{r,echo=FALSE}
+anova(m_seg, m_ln, test = "Chisq")
+```
+
+### Figure avec les 5 modélisations
+
+```{r,echo=FALSE,warning=FALSE}
+predall = rbind(ypred1,ypred2,ypred3,ypred4,ypred5)[,1]
+
+
+# Crée un nouveau graphique sans tracé
+plot(data_chol$chol, data_chol$abeta42, type = "n", xlab = "cholesterol", ylab = "abeta42", main = "Figure avec les 5 modélisations",ylim = c(min(predall),max(predall)))
+
+# Ajoute les lignes pour les modélisations
+lines(newdata$chol, ypred1[, "fit"], lty = 1, col = "red", lwd = 2)
+lines(newdata$chol, ypred2[, "fit"], lty = 1, col = "orange", lwd = 2)
+lines(newdata$chol, ypred3[, "fit"], lty = 1, col = "green", lwd = 2)
+lines(newdata$chol, ypred4[, "fit"], lty = 1, col = "blue", lwd = 2)
+lines(newdata$chol, ypred5[, "fit"], lty = 1, col = "purple", lwd = 2)
+#plot(m_seg, col = "purple", add = TRUE)
+
+# Zone de tracé pour la légende
+par(xpd = TRUE) # Permet l'affichage en dehors de la zone de tracé
+plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n") # Crée une zone de tracé vide
+
+# Ajoute la légende
+legend("top", legend = c("Spline", "Cubique", "Quadratique", "Linéaire", "Linéaire par morceau"), 
+       lty = 1, col = c("red", "orange", "green", "blue", "purple"), lwd = 2, 
+       xjust = 1, yjust = 1)
+
+```
+
+
+## Effet du Cholesterol {.tabset}
+
+### Spline vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_spline, m, test = "Chisq")
+```
+
+### Cubique vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_cub, m, test = "Chisq")
+```
+
+### Quadratique vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_quad, m, test = "Chisq")
+```
+
+### Linéaire vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_ln, m, test = "Chisq")
+```
+
+### Linéaire par morceau vs modèle sans Chol
+
+```{r,echo=FALSE}
+anova(m_seg, m, test = "Chisq")
+```
+
+
